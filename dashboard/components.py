@@ -38,7 +38,7 @@ def category_bar_chart(df: pd.DataFrame) -> go.Figure:
         color="category", color_discrete_map=CATEGORY_COLORS,
         text=df["pct"].apply(lambda x: f"{x}%"),
     )
-    fig.update_traces(textposition="outside")
+    fig.update_traces(textposition="outside", cliponaxis=False)
     fig.update_layout(
         **_LAYOUT,
         showlegend=False,
@@ -46,6 +46,7 @@ def category_bar_chart(df: pd.DataFrame) -> go.Figure:
         xaxis_title="Количество вопросов",
         title="Распределение по категориям",
         height=450,
+        margin=dict(l=20, r=60, t=40, b=20),
     )
     return fig
 

@@ -128,9 +128,9 @@ if page == "Обзор":
         df_cats = pd.DataFrame(cats)
         col_bar, col_pie = st.columns(2)
         with col_bar:
-            st.plotly_chart(category_bar_chart(df_cats), width="stretch")
+            st.plotly_chart(category_bar_chart(df_cats), use_container_width=True)
         with col_pie:
-            st.plotly_chart(category_pie_chart(df_cats), width="stretch")
+            st.plotly_chart(category_pie_chart(df_cats), use_container_width=True)
     else:
         st.info("Нет данных для отображения. Запустите классификацию.")
 
@@ -141,7 +141,7 @@ if page == "Обзор":
             df_runs = pd.DataFrame(runs)
             cols_to_show = [c for c in ["started_at", "finished_at", "method", "model_name",
                                          "questions_processed", "questions_failed"] if c in df_runs.columns]
-            st.dataframe(df_runs[cols_to_show], width="stretch", hide_index=True)
+            st.dataframe(df_runs[cols_to_show], use_container_width=True)
 
 
 # ═══════════════ Категории ═════════════════════════════════════════
@@ -160,7 +160,7 @@ elif page == "Категории":
         if subs:
             st.plotly_chart(
                 subcategory_bar_chart(pd.DataFrame(subs)),
-                width="stretch",
+                use_container_width=True,
             )
     else:
         # Drill-down: подкатегории внутри выбранной категории
@@ -169,7 +169,7 @@ elif page == "Категории":
         if subs:
             st.plotly_chart(
                 subcategory_bar_chart(pd.DataFrame(subs)),
-                width="stretch",
+                use_container_width=True,
             )
         else:
             st.info(f"Нет данных по категории \"{selected_cat}\"")
@@ -184,7 +184,7 @@ elif page == "Категории":
         if trends:
             st.plotly_chart(
                 trends_line_chart(pd.DataFrame(trends)),
-                width="stretch",
+                use_container_width=True,
             )
         else:
             st.info("Нет данных о трендах")
@@ -194,7 +194,7 @@ elif page == "Категории":
         if diff:
             st.plotly_chart(
                 difficulty_bar_chart(pd.DataFrame(diff)),
-                width="stretch",
+                use_container_width=True,
             )
         else:
             st.info("Нет данных о сложности")
@@ -210,13 +210,13 @@ elif page == "Тренды":
         df_yearly = pd.DataFrame(yearly)
 
         # Heatmap: год × категория
-        st.plotly_chart(year_trends_heatmap(df_yearly), width="stretch")
+        st.plotly_chart(year_trends_heatmap(df_yearly), use_container_width=True)
 
         # Рост/падение
         growth = category_growth(conn, model_filter)
         if growth:
             df_growth = pd.DataFrame(growth)
-            st.plotly_chart(growth_bar_chart(df_growth), width="stretch")
+            st.plotly_chart(growth_bar_chart(df_growth), use_container_width=True)
 
             # Таблица: топ-5 растущих и топ-5 падающих
             col_up, col_down = st.columns(2)
@@ -282,7 +282,7 @@ elif page == "Рекомендации":
                     "count": "Вопросов",
                     "pct": "Доля %",
                 }),
-                width="stretch",
+                use_container_width=True,
                 hide_index=True,
             )
         else:
@@ -318,7 +318,7 @@ elif page == "Авторы":
                 "pack_count": "Пакетов",
                 "question_count": "Вопросов",
             }),
-            width="stretch",
+            use_container_width=True,
             hide_index=True,
         )
 
@@ -333,7 +333,7 @@ elif page == "Авторы":
             if profile and len(profile) >= 3:
                 st.plotly_chart(
                     author_radar_chart(profile, selected_author),
-                    width="stretch",
+                    use_container_width=True,
                 )
 
                 # Таблица детализации
@@ -346,7 +346,7 @@ elif page == "Авторы":
                         "count": "Вопросов",
                         "pct": "Доля %",
                     }),
-                    width="stretch",
+                    use_container_width=True,
                     hide_index=True,
                 )
             elif profile:
@@ -408,13 +408,13 @@ elif page == "Сравнение моделей":
                 # Heatmap
                 st.plotly_chart(
                     agreement_heatmap(matrix_data, cat_list, model_a, model_b),
-                    width="stretch",
+                    use_container_width=True,
                 )
 
                 # Сравнение уверенности
                 st.plotly_chart(
                     model_confidence_comparison(df_common, model_a, model_b),
-                    width="stretch",
+                    use_container_width=True,
                 )
 
                 # Таблица разногласий
@@ -442,7 +442,7 @@ elif page == "Сравнение моделей":
                                     "conf_b": f"Увер. {model_b[:10]}",
                                 }
                             ),
-                            width="stretch",
+                            use_container_width=True,
                             hide_index=True,
                             height=400,
                         )
@@ -459,9 +459,9 @@ elif page == "Уверенность":
 
         col_hist, col_box = st.columns(2)
         with col_hist:
-            st.plotly_chart(confidence_histogram(df_conf), width="stretch")
+            st.plotly_chart(confidence_histogram(df_conf), use_container_width=True)
         with col_box:
-            st.plotly_chart(confidence_box_by_category(df_conf), width="stretch")
+            st.plotly_chart(confidence_box_by_category(df_conf), use_container_width=True)
 
         # Таблица средних значений
         conf_cats = confidence_by_category(conn, model_filter)
@@ -478,7 +478,7 @@ elif page == "Уверенность":
                         "count": "Кол-во",
                     }
                 ),
-                width="stretch",
+                use_container_width=True,
                 hide_index=True,
             )
     else:

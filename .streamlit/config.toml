@@ -1,3 +1,6 @@
+[server]
+enableWebsocketCompression = false
+
 [browser]
 gatherUsageStats = false
 

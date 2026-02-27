@@ -63,21 +63,19 @@ st.set_page_config(
 )
 
 
-@st.cache_resource
 def get_conn():
-    conn = get_connection(DB_PATH)
-    conn.execute("PRAGMA query_only = ON")  # read-only safety
-    # Streamlit reruns in different threads — allow cross-thread access
     import sqlite3
-    conn2 = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn2.row_factory = sqlite3.Row
-    conn2.execute("PRAGMA foreign_keys = ON")
-    conn2.execute("PRAGMA query_only = ON")
-    conn.close()
-    return conn2
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+    return conn
 
 
-conn = get_conn()
+if "conn" not in st.session_state:
+    st.session_state.conn = get_conn()
+conn = st.session_state.conn
 
 
 # ─── Хелперы ─────────────────────────────────────────────────────

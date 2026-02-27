@@ -4,9 +4,7 @@
     streamlit run dashboard/app.py
 """
 
-import subprocess
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -84,28 +82,6 @@ conn = get_conn()
 
 # ─── Хелперы ─────────────────────────────────────────────────────
 
-def get_ollama_models() -> list[str]:
-    """Получить список моделей из Ollama."""
-    try:
-        import ollama
-        return [m.model for m in ollama.list().models]
-    except Exception:
-        return []
-
-
-def get_unclassified_count(model_name: str) -> int:
-    """Посчитать неклассифицированные вопросы для модели."""
-    row = conn.execute(
-        """SELECT COUNT(*) FROM questions q
-           WHERE NOT EXISTS (
-               SELECT 1 FROM question_topics qt
-               WHERE qt.question_id = q.id AND qt.model_name = ?
-           )""",
-        (model_name,),
-    ).fetchone()
-    return row[0] if row else 0
-
-
 PROJECT_ROOT = Path(__file__).parent.parent
 
 
@@ -131,166 +107,10 @@ if model_filter:
 
 # ─── Вкладки ──────────────────────────────────────────────────────
 
-tab_run, tab1, tab2, tab_trends, tab_rec, tab_authors, tab3, tab4, tab5 = st.tabs([
-    "Запуск", "Обзор", "Категории", "Тренды", "Рекомендации", "Авторы",
+tab1, tab2, tab_trends, tab_rec, tab_authors, tab3, tab4, tab5 = st.tabs([
+    "Обзор", "Категории", "Тренды", "Рекомендации", "Авторы",
     "Сравнение моделей", "Уверенность", "Вопросы",
 ])
-
-# ═══════════════ Вкладка: Запуск классификации ═════════════════════
-
-# Инициализация session_state
-if "classify_process" not in st.session_state:
-    st.session_state.classify_process = None
-if "classify_output" not in st.session_state:
-    st.session_state.classify_output = ""
-if "classify_running" not in st.session_state:
-    st.session_state.classify_running = False
-
-with tab_run:
-    st.header("Запуск классификации")
-
-    # ── Параметры ──
-    col_model, col_strategy = st.columns(2)
-
-    with col_model:
-        ollama_models = get_ollama_models()
-        model_choices = ollama_models + ["Groq (облако)"]
-        if not model_choices:
-            model_choices = ["Groq (облако)"]
-        selected_run_model = st.selectbox(
-            "Модель",
-            model_choices,
-            key="run_model",
-            help="Локальные модели Ollama или облачный Groq API",
-        )
-
-    with col_strategy:
-        strategy = st.radio(
-            "Стратегия",
-            ["Двухэтапная (рекомендуется)", "Одноэтапная"],
-            key="run_strategy",
-            help="Двухэтапная: сначала категория, потом подкатегория. Точнее, но в 2 раза больше запросов.",
-        )
-
-    col_limit, col_fewshot = st.columns(2)
-
-    with col_limit:
-        limit_val = st.number_input(
-            "Количество вопросов",
-            min_value=0,
-            max_value=100000,
-            value=0,
-            step=100,
-            key="run_limit",
-            help="0 = все неклассифицированные",
-        )
-
-    with col_fewshot:
-        few_shot = st.checkbox("Few-shot примеры", value=True, key="run_fewshot",
-                               help="Добавить примеры классификации в промпт")
-
-    # ── Инфо: сколько вопросов осталось ──
-    is_groq = selected_run_model == "Groq (облако)"
-    if not is_groq:
-        unclassified = get_unclassified_count(selected_run_model)
-        st.info(f"Неклассифицированных вопросов для **{selected_run_model}**: **{unclassified:,}**")
-
-    # ── Собрать команду ──
-    def build_command() -> list[str]:
-        cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "classify.py"), "--no-dashboard"]
-        if is_groq:
-            cmd.append("--groq")
-        else:
-            cmd.extend(["--model", selected_run_model])
-        if "Двухэтапная" in strategy:
-            cmd.append("--twostage")
-        if limit_val > 0:
-            cmd.extend(["--limit", str(limit_val)])
-        if not few_shot:
-            cmd.append("--no-few-shot")
-        return cmd
-
-    # ── Показать команду ──
-    cmd = build_command()
-    cmd_display = " ".join(cmd).replace(sys.executable, "python").replace(str(PROJECT_ROOT) + "\\", "").replace(str(PROJECT_ROOT) + "/", "")
-    st.code(cmd_display, language="bash")
-
-    # ── Кнопки управления ──
-    col_start, col_stop = st.columns(2)
-
-    with col_start:
-        start_clicked = st.button(
-            "Запустить классификацию",
-            type="primary",
-            disabled=st.session_state.classify_running,
-            width="stretch",
-        )
-
-    with col_stop:
-        stop_clicked = st.button(
-            "Остановить",
-            disabled=not st.session_state.classify_running,
-            width="stretch",
-        )
-
-    # ── Обработка кнопок ──
-    if start_clicked and not st.session_state.classify_running:
-        st.session_state.classify_output = ""
-        st.session_state.classify_running = True
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-            cwd=str(PROJECT_ROOT),
-        )
-        st.session_state.classify_process = proc
-
-    if stop_clicked and st.session_state.classify_process is not None:
-        st.session_state.classify_process.terminate()
-        st.session_state.classify_running = False
-        st.session_state.classify_output += "\n--- Остановлено пользователем ---\n"
-
-    # ── Live-вывод ──
-    if st.session_state.classify_running and st.session_state.classify_process is not None:
-        proc = st.session_state.classify_process
-        output_area = st.empty()
-
-        # Читаем все доступные строки
-        while True:
-            retcode = proc.poll()
-            line = proc.stdout.readline()
-            if line:
-                st.session_state.classify_output += line
-            if not line and retcode is not None:
-                # Процесс завершился
-                st.session_state.classify_running = False
-                remaining = proc.stdout.read()
-                if remaining:
-                    st.session_state.classify_output += remaining
-                st.session_state.classify_output += f"\n--- Завершено (код: {retcode}) ---\n"
-                break
-            if not line:
-                break
-
-        # Показываем вывод (последние 100 строк)
-        lines = st.session_state.classify_output.strip().split("\n")
-        display_text = "\n".join(lines[-100:])
-        output_area.code(display_text, language="text")
-
-        # Авто-обновление пока процесс работает
-        if st.session_state.classify_running:
-            time.sleep(1)
-            st.rerun()
-
-    elif st.session_state.classify_output:
-        lines = st.session_state.classify_output.strip().split("\n")
-        display_text = "\n".join(lines[-100:])
-        st.code(display_text, language="text")
-
 
 # ═══════════════ Вкладка 1: Обзор ═════════════════════════════════
 

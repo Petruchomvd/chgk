@@ -1,15 +1,11 @@
 [server]
 headless = true
 address = "0.0.0.0"
-port = 10000
 enableCORS = false
 enableXsrfProtection = false
-enableWebsocketCompression = false
 
 [browser]
 gatherUsageStats = false
-serverAddress = "chgk-s9kq.onrender.com"
-serverPort = 443
 
 [theme]
 base = "dark"

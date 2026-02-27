@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: chgk-analysis
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-dashboard.txt
+    startCommand: streamlit run dashboard/app.py --server.port $PORT

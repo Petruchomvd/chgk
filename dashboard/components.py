@@ -46,8 +46,8 @@ def category_bar_chart(df: pd.DataFrame) -> go.Figure:
         xaxis_title="Количество вопросов",
         title="Распределение по категориям",
         height=450,
-        margin=dict(l=20, r=60, t=40, b=20),
     )
+    fig.update_layout(margin=dict(l=20, r=60, t=40, b=20))
     return fig
 
 

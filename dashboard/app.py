@@ -84,6 +84,57 @@ conn = st.session_state.conn
 # ─── Хелперы ─────────────────────────────────────────────────────
 
 PROJECT_ROOT = Path(__file__).parent.parent
+GENTLEMAN_CATEGORY_ORDER = [
+    "Люди",
+    "Места",
+    "Произведения",
+    "Наука",
+    "Выражения",
+    "Числа",
+]
+GENTLEMAN_CATEGORY_ALIASES = {
+    "Наука и техника": "Наука",
+    "Выражения и фразы": "Выражения",
+    "Числа и даты": "Числа",
+}
+
+
+def _normalize_gentleman_categories(raw_categories: dict) -> dict[str, list[list]]:
+    """Нормализовать категории «джентльменского набора» к 6 целевым."""
+    merged: dict[str, dict[str, int]] = {
+        category: {} for category in GENTLEMAN_CATEGORY_ORDER
+    }
+
+    if not isinstance(raw_categories, dict):
+        return {category: [] for category in GENTLEMAN_CATEGORY_ORDER}
+
+    for raw_name, items in raw_categories.items():
+        normalized_name = GENTLEMAN_CATEGORY_ALIASES.get(raw_name, raw_name)
+        if normalized_name not in merged or not isinstance(items, list):
+            continue
+
+        for item in items:
+            if not isinstance(item, (list, tuple)) or len(item) != 2:
+                continue
+            answer, count = item
+            answer_key = str(answer).strip().lower()
+            if not answer_key:
+                continue
+            try:
+                count_int = int(count)
+            except (TypeError, ValueError):
+                continue
+
+            prev = merged[normalized_name].get(answer_key, 0)
+            if count_int > prev:
+                merged[normalized_name][answer_key] = count_int
+
+    result: dict[str, list[list]] = {}
+    for category in GENTLEMAN_CATEGORY_ORDER:
+        items = [[answer, count] for answer, count in merged[category].items()]
+        items.sort(key=lambda x: x[1], reverse=True)
+        result[category] = items
+    return result
 
 
 # ─── Sidebar ──────────────────────────────────────────────────────
@@ -663,8 +714,9 @@ elif page == "Джентльменский набор":
         st.sidebar.markdown(f"Модель: {cat_data.get('model', '?')}")
         st.sidebar.markdown(f"Категоризировано: {cat_data.get('total_categorized', 0)}")
 
-        categories = cat_data.get("categories", {})
-        tab_names = [name for name in categories if categories[name]]
+        raw_categories = cat_data.get("categories", {})
+        categories = _normalize_gentleman_categories(raw_categories)
+        tab_names = [name for name in GENTLEMAN_CATEGORY_ORDER if categories.get(name)]
         if not tab_names:
             st.info("Нет категоризированных данных")
         else:

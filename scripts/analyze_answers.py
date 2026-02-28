@@ -48,6 +48,63 @@ ALL_STOPWORDS = {
 
 OUTPUT_DIR = PROJECT_ROOT / "data" / "gentleman_set"
 
+# Низкоинформативные ответы, которые не должны попадать в «джентльменский набор»
+LOW_INFO_EXACT_ANSWERS = {
+    "да", "нет", "не", "ничего", "никто", "всё", "все", "что", "кто",
+    "он", "она", "они", "мы", "это", "то",
+    "икс", "x", "игрек", "y", "зет", "z",
+    "альфа", "бета", "гамма", "дельта",
+}
+
+
+def normalize_answer_key(text: str) -> str:
+    """Нормализовать ответ в стабильный ключ для подсчёта."""
+    normalized = re.sub(r"\s+", " ", text.strip().lower())
+    return normalized
+
+
+def is_numeric_like_answer(text: str) -> bool:
+    """Проверить, похож ли ответ на число/дату/числовую константу."""
+    text = text.strip().lower()
+    if text in {"π", "пи", "pi"}:
+        return True
+    if re.fullmatch(r"\d{1,4}", text):
+        return True
+    if re.fullmatch(r"\d{1,4}([./:-]\d{1,4})+", text):
+        return True
+    if re.fullmatch(r"\d+[,.]\d+", text):
+        return True
+    return False
+
+
+def low_info_reason(normalized: str) -> str | None:
+    """Вернуть причину отбраковки низкоинформативного ответа."""
+    if not normalized:
+        return "empty"
+
+    if re.fullmatch(r"[\W_]+", normalized):
+        return "punctuation_only"
+
+    if normalized in LOW_INFO_EXACT_ANSWERS:
+        return "stop_answer"
+
+    # Не отбрасываем короткие числовые ответы вроде «42»
+    if is_numeric_like_answer(normalized):
+        return None
+
+    tokens = re.findall(r"[а-яёa-z0-9]+", normalized, flags=re.IGNORECASE)
+    if not tokens:
+        return "no_tokens"
+
+    if len(tokens) == 1:
+        token = tokens[0]
+        if len(token) <= 1:
+            return "too_short_single_token"
+        if token in LOW_INFO_EXACT_ANSWERS:
+            return "stop_single_token"
+
+    return None
+
 
 # ── Очистка ответов ──────────────────────────────────────────────
 
@@ -97,20 +154,31 @@ def count_full_answers(
     Нормализует регистр для подсчёта, но сохраняет оригинальное
     написание самого частого варианта (display form).
     """
+    raw_answer_counter = Counter()
+    filtered_answer_counter = Counter()
+    filtered_answer_reason: dict[str, str] = {}
     answer_counter = Counter()
     answer_questions: dict[str, list[int]] = {}
-    # normalized → Counter(original_forms)
+    # normalized -> Counter(original_forms)
     original_forms: dict[str, Counter] = {}
 
     for qid, text in answers:
-        normalized = text.strip().lower()
-        if not normalized or len(normalized) < 2:
+        normalized = normalize_answer_key(text)
+        if not normalized:
             continue
-        answer_counter[normalized] += 1
-        answer_questions.setdefault(normalized, []).append(qid)
 
         original = text.strip()
         original_forms.setdefault(normalized, Counter())[original] += 1
+        raw_answer_counter[normalized] += 1
+
+        reason = low_info_reason(normalized)
+        if reason:
+            filtered_answer_counter[normalized] += 1
+            filtered_answer_reason[normalized] = reason
+            continue
+
+        answer_counter[normalized] += 1
+        answer_questions.setdefault(normalized, []).append(qid)
 
     # Display form: самый частый вариант написания
     display_forms = {}
@@ -118,8 +186,11 @@ def count_full_answers(
         display_forms[norm] = forms.most_common(1)[0][0]
 
     top = answer_counter.most_common(top_n)
+    filtered_top = filtered_answer_counter.most_common(200)
 
-    print(f"  Уникальных ответов: {len(answer_counter)}")
+    print(f"  Уникальных ответов (до фильтра): {len(raw_answer_counter)}")
+    print(f"  Отфильтровано как низкоинформативные: {len(filtered_answer_counter)}")
+    print(f"  Уникальных ответов (после фильтра): {len(answer_counter)}")
     print(f"  Топ-{top_n}: от {top[-1][1] if top else 0} до {top[0][1] if top else 0} упоминаний")
 
     return {
@@ -127,6 +198,16 @@ def count_full_answers(
         "display_forms": {k: display_forms[k] for k, _ in top},
         "answer_questions": {
             k: v for k, v in answer_questions.items() if len(v) >= 2
+        },
+        "filtered_out": [
+            [display_forms.get(k, k), cnt, filtered_answer_reason.get(k, "filtered")]
+            for k, cnt in filtered_top
+        ],
+        "stats": {
+            "unique_raw_answers": len(raw_answer_counter),
+            "unique_filtered_answers": len(filtered_answer_counter),
+            "unique_kept_answers": len(answer_counter),
+            "filtered_mentions": int(sum(filtered_answer_counter.values())),
         },
     }
 
@@ -301,6 +382,10 @@ def main():
         "total_questions": len(rows),
         "total_fragments": len(answers),
         "unique_top_answers": len(top_answers["top_answers"]),
+        "candidates_before_filter": top_answers.get("stats", {}).get("unique_raw_answers"),
+        "candidates_after_filter": top_answers.get("stats", {}).get("unique_kept_answers"),
+        "filtered_unique_answers": top_answers.get("stats", {}).get("unique_filtered_answers"),
+        "filtered_mentions": top_answers.get("stats", {}).get("filtered_mentions"),
         "unique_persons": len(entities["PER"]),
         "unique_locations": len(entities["LOC"]),
         "unique_orgs": len(entities["ORG"]),

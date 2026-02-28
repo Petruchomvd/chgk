@@ -472,3 +472,25 @@ def rare_subcategories(conn: sqlite3.Connection, model_name: Optional[str] = Non
         WHERE 100.0 * c.count / t.total < 1.0
         ORDER BY c.count ASC
     """, params).fetchall()]
+
+
+# ── Джентльменский набор ─────────────────────────────────────────
+
+def get_questions_by_ids(
+    conn,
+    question_ids: list,
+    limit: int = 20,
+):
+    """Получить вопросы по списку ID (для drill-down)."""
+    if not question_ids:
+        return []
+    ids = question_ids[:limit]
+    placeholders = ",".join("?" * len(ids))
+    return [dict(r) for r in conn.execute(f"""
+        SELECT q.id, q.text, q.answer, q.comment,
+               p.title AS pack_title
+        FROM questions q
+        LEFT JOIN packs p ON q.pack_id = p.id
+        WHERE q.id IN ({placeholders})
+        ORDER BY q.id
+    """, ids).fetchall()]

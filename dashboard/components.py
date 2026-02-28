@@ -316,3 +316,32 @@ def cohens_kappa(matrix: np.ndarray) -> float:
     if pe >= 1:
         return 1.0
     return (po - pe) / (1 - pe)
+
+
+# ── Джентльменский набор ─────────────────────────────────────────
+
+def gentleman_bar_chart(
+    df: pd.DataFrame,
+    name_col: str,
+    count_col: str,
+    title: str,
+    top_n: int = 30,
+    color: str = "#4363d8",
+) -> go.Figure:
+    """Горизонтальный bar chart для топ-сущностей."""
+    df = df.head(top_n).iloc[::-1]
+    fig = px.bar(
+        df, x=count_col, y=name_col, orientation="h",
+        text=count_col,
+        color_discrete_sequence=[color],
+    )
+    fig.update_traces(textposition="outside")
+    fig.update_layout(
+        **_LAYOUT,
+        showlegend=False,
+        yaxis_title="",
+        xaxis_title="Количество вопросов",
+        title=title,
+        height=max(400, min(top_n, len(df)) * 25),
+    )
+    return fig

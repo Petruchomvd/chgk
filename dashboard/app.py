@@ -28,6 +28,7 @@ from dashboard.db_queries import (
     get_classification_runs,
     get_common_questions,
     get_overview_stats,
+    get_questions_by_ids,
     paired_categories,
     rare_subcategories,
     search_questions,
@@ -47,6 +48,7 @@ from dashboard.components import (
     confidence_box_by_category,
     confidence_histogram,
     difficulty_bar_chart,
+    gentleman_bar_chart,
     growth_bar_chart,
     model_confidence_comparison,
     subcategory_bar_chart,
@@ -107,7 +109,7 @@ if model_filter:
 
 st.sidebar.markdown("---")
 PAGES = ["Обзор", "Категории", "Тренды", "Рекомендации", "Авторы",
-         "Сравнение моделей", "Уверенность", "Вопросы"]
+         "Сравнение моделей", "Уверенность", "Вопросы", "Джентльменский набор"]
 page = st.sidebar.radio("Раздел", PAGES, label_visibility="collapsed")
 
 # ═══════════════ Обзор ═════════════════════════════════════════════
@@ -542,3 +544,83 @@ elif page == "Вопросы":
                     st.markdown(f"**Сложность:** {q['difficulty']}")
     else:
         st.info("Ничего не найдено")
+
+# ═══════════════ Джентльменский набор ════════════════════════════
+
+elif page == "Джентльменский набор":
+    import json
+
+    st.header("Джентльменский набор")
+    st.caption("Самые частые ответы в ЧГК: люди, места, понятия, которые должен знать каждый игрок")
+
+    data_dir = PROJECT_ROOT / "data" / "gentleman_set"
+    if not (data_dir / "entities.json").exists():
+        st.warning("Данные ещё не сгенерированы. Запустите:\n\n"
+                   "`python scripts/analyze_answers.py`")
+        st.stop()
+
+    entities = json.loads((data_dir / "entities.json").read_text(encoding="utf-8"))
+    keywords = json.loads((data_dir / "keywords.json").read_text(encoding="utf-8"))
+    meta = json.loads((data_dir / "meta.json").read_text(encoding="utf-8"))
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"**Gentleman Set**")
+    st.sidebar.markdown(f"Обновлён: {meta['generated_at'][:10]}")
+    st.sidebar.markdown(f"Вопросов: {meta['total_questions']:,}")
+
+    min_freq = st.slider("Минимальная частота упоминания", 2, 30, 3)
+    top_n = st.slider("Показать топ-N", 10, 100, 30)
+
+    tab_per, tab_loc, tab_org, tab_kw, tab_bg = st.tabs([
+        "👤 Люди", "🌍 Места", "🏛 Организации", "🔑 Ключевые слова", "📝 Биграммы"
+    ])
+
+    def _show_tab(data_list, name_label, count_label, title, color, entity_questions):
+        """Отобразить вкладку с графиком, таблицей и drill-down."""
+        filtered = [(name, cnt) for name, cnt in data_list if cnt >= min_freq]
+        if not filtered:
+            st.info("Нет данных с указанной частотой")
+            return
+
+        df = pd.DataFrame(filtered, columns=[name_label, count_label])
+
+        col_chart, col_table = st.columns([2, 1])
+        with col_chart:
+            fig = gentleman_bar_chart(df, name_label, count_label, title, top_n=top_n, color=color)
+            st.plotly_chart(fig, use_container_width=True)
+        with col_table:
+            st.dataframe(df.head(top_n), use_container_width=True, hide_index=True)
+
+        # Drill-down
+        options = [""] + [p[0] for p in filtered[:50]]
+        selected = st.selectbox(f"Выберите для просмотра вопросов", options, key=f"drill_{title}")
+        if selected and selected in entity_questions:
+            qids = entity_questions[selected]
+            st.caption(f"Вопросов с «{selected}» в ответе: {len(qids)}")
+            qs = get_questions_by_ids(conn, qids, limit=15)
+            for q in qs:
+                with st.expander(f"#{q['id']} — {(q['text'] or '')[:100]}..."):
+                    st.markdown(f"**Вопрос:** {q['text']}")
+                    st.markdown(f"**Ответ:** {q['answer']}")
+                    if q.get("comment"):
+                        st.markdown(f"**Комментарий:** {q['comment']}")
+
+    with tab_per:
+        _show_tab(entities["PER"], "Персона", "Вопросов",
+                  "Топ людей в ответах", "#e6194b", entities.get("entity_questions", {}))
+
+    with tab_loc:
+        _show_tab(entities["LOC"], "Место", "Вопросов",
+                  "Топ мест в ответах", "#f58231", entities.get("entity_questions", {}))
+
+    with tab_org:
+        _show_tab(entities["ORG"], "Организация", "Вопросов",
+                  "Топ организаций в ответах", "#4363d8", entities.get("entity_questions", {}))
+
+    with tab_kw:
+        _show_tab(keywords["lemmas"], "Слово", "Вопросов",
+                  "Топ ключевых слов", "#3cb44b", keywords.get("keyword_questions", {}))
+
+    with tab_bg:
+        _show_tab(keywords["bigrams"], "Биграмма", "Вопросов",
+                  "Топ биграмм", "#911eb4", {})

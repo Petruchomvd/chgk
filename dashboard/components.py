@@ -23,6 +23,17 @@ CATEGORY_COLORS = {
     "Логика и wordplay": "#aaffc3",
 }
 
+# Цвета для категорий «Джентльменского набора»
+GENTLEMAN_CATEGORY_COLORS = {
+    "Люди": "#e6194b",
+    "Места": "#f58231",
+    "Произведения": "#911eb4",
+    "Наука и техника": "#4363d8",
+    "Выражения и фразы": "#3cb44b",
+    "Числа и даты": "#42d4f4",
+    "Другое": "#9A6324",
+}
+
 _LAYOUT = dict(
     template="plotly_white",
     font=dict(family="Arial, sans-serif"),

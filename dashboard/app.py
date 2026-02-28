@@ -40,6 +40,7 @@ from dashboard.db_queries import (
 )
 from dashboard.components import (
     CATEGORY_COLORS,
+    GENTLEMAN_CATEGORY_COLORS,
     agreement_heatmap,
     author_radar_chart,
     category_bar_chart,
@@ -551,76 +552,177 @@ elif page == "Джентльменский набор":
     import json
 
     st.header("Джентльменский набор")
-    st.caption("Самые частые ответы в ЧГК: люди, места, понятия, которые должен знать каждый игрок")
+    st.caption("Самые частые ответы в ЧГК: люди, места, произведения, понятия — всё, что должен знать игрок")
 
     data_dir = PROJECT_ROOT / "data" / "gentleman_set"
-    if not (data_dir / "entities.json").exists():
+
+    has_categorized = (data_dir / "categorized_answers.json").exists()
+    has_top_answers = (data_dir / "top_answers.json").exists()
+    has_entities = (data_dir / "entities.json").exists()
+
+    if not has_entities and not has_top_answers:
         st.warning("Данные ещё не сгенерированы. Запустите:\n\n"
                    "`python scripts/analyze_answers.py`")
         st.stop()
 
-    entities = json.loads((data_dir / "entities.json").read_text(encoding="utf-8"))
-    keywords = json.loads((data_dir / "keywords.json").read_text(encoding="utf-8"))
-    meta = json.loads((data_dir / "meta.json").read_text(encoding="utf-8"))
+    # Загрузка метаданных
+    if (data_dir / "meta.json").exists():
+        meta = json.loads((data_dir / "meta.json").read_text(encoding="utf-8"))
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("**Gentleman Set**")
+        st.sidebar.markdown(f"Обновлён: {meta['generated_at'][:10]}")
+        st.sidebar.markdown(f"Вопросов: {meta['total_questions']:,}")
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown(f"**Gentleman Set**")
-    st.sidebar.markdown(f"Обновлён: {meta['generated_at'][:10]}")
-    st.sidebar.markdown(f"Вопросов: {meta['total_questions']:,}")
-
+    # Общие контролы
     min_freq = st.slider("Минимальная частота упоминания", 2, 30, 3)
     top_n = st.slider("Показать топ-N", 10, 100, 30)
 
-    tab_per, tab_loc, tab_org, tab_kw, tab_bg = st.tabs([
-        "👤 Люди", "🌍 Места", "🏛 Организации", "🔑 Ключевые слова", "📝 Биграммы"
-    ])
-
-    def _show_tab(data_list, name_label, count_label, title, color, entity_questions):
+    def _show_tab(data_list, name_label, count_label, title, color,
+                  entity_questions, display_forms=None):
         """Отобразить вкладку с графиком, таблицей и drill-down."""
         filtered = [(name, cnt) for name, cnt in data_list if cnt >= min_freq]
         if not filtered:
             st.info("Нет данных с указанной частотой")
             return
 
-        df = pd.DataFrame(filtered, columns=[name_label, count_label])
+        # Подставить display-формы если есть
+        if display_forms:
+            display_data = [(display_forms.get(n, n), cnt) for n, cnt in filtered]
+        else:
+            display_data = filtered
+
+        df = pd.DataFrame(display_data, columns=[name_label, count_label])
 
         col_chart, col_table = st.columns([2, 1])
         with col_chart:
-            fig = gentleman_bar_chart(df, name_label, count_label, title, top_n=top_n, color=color)
+            fig = gentleman_bar_chart(
+                df, name_label, count_label, title, top_n=top_n, color=color
+            )
             st.plotly_chart(fig, use_container_width=True)
         with col_table:
             st.dataframe(df.head(top_n), use_container_width=True, hide_index=True)
 
         # Drill-down
-        options = [""] + [p[0] for p in filtered[:50]]
-        selected = st.selectbox(f"Выберите для просмотра вопросов", options, key=f"drill_{title}")
-        if selected and selected in entity_questions:
-            qids = entity_questions[selected]
-            st.caption(f"Вопросов с «{selected}» в ответе: {len(qids)}")
-            qs = get_questions_by_ids(conn, qids, limit=15)
-            for q in qs:
-                with st.expander(f"#{q['id']} — {(q['text'] or '')[:100]}..."):
-                    st.markdown(f"**Вопрос:** {q['text']}")
-                    st.markdown(f"**Ответ:** {q['answer']}")
-                    if q.get("comment"):
-                        st.markdown(f"**Комментарий:** {q['comment']}")
+        drill_options = filtered[:50]
+        if display_forms:
+            option_labels = [""] + [display_forms.get(n, n) for n, _ in drill_options]
+        else:
+            option_labels = [""] + [n for n, _ in drill_options]
+        selected_label = st.selectbox(
+            "Выберите для просмотра вопросов", option_labels, key=f"drill_{title}"
+        )
 
-    with tab_per:
-        _show_tab(entities["PER"], "Персона", "Вопросов",
-                  "Топ людей в ответах", "#e6194b", entities.get("entity_questions", {}))
+        if selected_label:
+            # Найти normalized ключ
+            if display_forms:
+                norm_key = next(
+                    (n for n, _ in drill_options
+                     if display_forms.get(n, n) == selected_label),
+                    selected_label
+                )
+            else:
+                norm_key = selected_label
 
-    with tab_loc:
-        _show_tab(entities["LOC"], "Место", "Вопросов",
-                  "Топ мест в ответах", "#f58231", entities.get("entity_questions", {}))
+            qids = entity_questions.get(norm_key, [])
+            if qids:
+                st.caption(f"Вопросов с «{selected_label}» в ответе: {len(qids)}")
+                qs = get_questions_by_ids(conn, qids, limit=15)
+                for q in qs:
+                    with st.expander(f"#{q['id']} — {(q['text'] or '')[:100]}..."):
+                        st.markdown(f"**Вопрос:** {q['text']}")
+                        st.markdown(f"**Ответ:** {q['answer']}")
+                        if q.get("comment"):
+                            st.markdown(f"**Комментарий:** {q['comment']}")
 
-    with tab_org:
-        _show_tab(entities["ORG"], "Организация", "Вопросов",
-                  "Топ организаций в ответах", "#4363d8", entities.get("entity_questions", {}))
+    # ── Выбор режима ──
+    views = []
+    if has_categorized:
+        views.append("По категориям")
+    if has_top_answers:
+        views.append("Все ответы")
+    if has_entities:
+        views.append("NER и ключевые слова")
 
-    with tab_kw:
-        _show_tab(keywords["lemmas"], "Слово", "Вопросов",
-                  "Топ ключевых слов", "#3cb44b", keywords.get("keyword_questions", {}))
+    view = st.radio("Режим", views, horizontal=True)
 
-    with tab_bg:
-        _show_tab(keywords["bigrams"], "Биграмма", "Вопросов",
-                  "Топ биграмм", "#911eb4", {})
+    # ── Режим 1: Категоризированные ответы ──
+    if view == "По категориям":
+        cat_data = json.loads(
+            (data_dir / "categorized_answers.json").read_text(encoding="utf-8")
+        )
+        top_data = json.loads(
+            (data_dir / "top_answers.json").read_text(encoding="utf-8")
+        )
+
+        display_forms = {
+            **top_data.get("display_forms", {}),
+            **cat_data.get("display_forms", {}),
+        }
+        answer_questions = top_data.get("answer_questions", {})
+
+        st.sidebar.markdown(f"Модель: {cat_data.get('model', '?')}")
+        st.sidebar.markdown(f"Категоризировано: {cat_data.get('total_categorized', 0)}")
+
+        categories = cat_data.get("categories", {})
+        tab_names = [name for name in categories if categories[name]]
+        if not tab_names:
+            st.info("Нет категоризированных данных")
+        else:
+            tabs = st.tabs(tab_names)
+            for tab, cat_name in zip(tabs, tab_names):
+                with tab:
+                    color = GENTLEMAN_CATEGORY_COLORS.get(cat_name, "#666666")
+                    _show_tab(
+                        categories[cat_name],
+                        "Ответ", "Вопросов",
+                        f"Топ: {cat_name}", color,
+                        answer_questions, display_forms,
+                    )
+
+    # ── Режим 2: Все ответы (без категорий) ──
+    elif view == "Все ответы":
+        top_data = json.loads(
+            (data_dir / "top_answers.json").read_text(encoding="utf-8")
+        )
+        display_forms = top_data.get("display_forms", {})
+        answer_questions = top_data.get("answer_questions", {})
+
+        _show_tab(
+            top_data["top_answers"],
+            "Ответ", "Вопросов",
+            "Топ ответов ЧГК", "#4363d8",
+            answer_questions, display_forms,
+        )
+
+    # ── Режим 3: NER и ключевые слова ──
+    elif view == "NER и ключевые слова":
+        entities = json.loads(
+            (data_dir / "entities.json").read_text(encoding="utf-8")
+        )
+        keywords = json.loads(
+            (data_dir / "keywords.json").read_text(encoding="utf-8")
+        )
+
+        tab_per, tab_loc, tab_org, tab_kw, tab_bg = st.tabs([
+            "Люди", "Места", "Организации", "Ключевые слова", "Биграммы"
+        ])
+
+        with tab_per:
+            _show_tab(entities["PER"], "Персона", "Вопросов",
+                      "Топ людей в ответах", "#e6194b",
+                      entities.get("entity_questions", {}))
+        with tab_loc:
+            _show_tab(entities["LOC"], "Место", "Вопросов",
+                      "Топ мест в ответах", "#f58231",
+                      entities.get("entity_questions", {}))
+        with tab_org:
+            _show_tab(entities["ORG"], "Организация", "Вопросов",
+                      "Топ организаций в ответах", "#4363d8",
+                      entities.get("entity_questions", {}))
+        with tab_kw:
+            _show_tab(keywords["lemmas"], "Слово", "Вопросов",
+                      "Топ ключевых слов", "#3cb44b",
+                      keywords.get("keyword_questions", {}))
+        with tab_bg:
+            _show_tab(keywords["bigrams"], "Биграмма", "Вопросов",
+                      "Топ биграмм", "#911eb4", {})

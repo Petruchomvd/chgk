@@ -86,6 +86,51 @@ def split_answer(text: str) -> list[str]:
     return [text]
 
 
+# ── Уровень 0: Частотность полных ответов ────────────────────────
+
+def count_full_answers(
+    answers: list[tuple[int, str]],
+    top_n: int = 1000,
+) -> dict:
+    """Подсчитать частотность полных ответов.
+
+    Нормализует регистр для подсчёта, но сохраняет оригинальное
+    написание самого частого варианта (display form).
+    """
+    answer_counter = Counter()
+    answer_questions: dict[str, list[int]] = {}
+    # normalized → Counter(original_forms)
+    original_forms: dict[str, Counter] = {}
+
+    for qid, text in answers:
+        normalized = text.strip().lower()
+        if not normalized or len(normalized) < 2:
+            continue
+        answer_counter[normalized] += 1
+        answer_questions.setdefault(normalized, []).append(qid)
+
+        original = text.strip()
+        original_forms.setdefault(normalized, Counter())[original] += 1
+
+    # Display form: самый частый вариант написания
+    display_forms = {}
+    for norm, forms in original_forms.items():
+        display_forms[norm] = forms.most_common(1)[0][0]
+
+    top = answer_counter.most_common(top_n)
+
+    print(f"  Уникальных ответов: {len(answer_counter)}")
+    print(f"  Топ-{top_n}: от {top[-1][1] if top else 0} до {top[0][1] if top else 0} упоминаний")
+
+    return {
+        "top_answers": top,
+        "display_forms": {k: display_forms[k] for k, _ in top},
+        "answer_questions": {
+            k: v for k, v in answer_questions.items() if len(v) >= 2
+        },
+    }
+
+
 # ── Уровень 1: NER (natasha) ────────────────────────────────────
 
 def extract_entities(answers: list[tuple[int, str]]) -> dict:
@@ -203,6 +248,7 @@ def main():
         description="Анализ ответов ЧГК для «Джентльменского набора»",
     )
     parser.add_argument("--limit", type=int, default=None, help="Ограничить кол-во вопросов")
+    parser.add_argument("--top-n", type=int, default=1000, help="Топ-N полных ответов (по умолчанию 1000)")
     args = parser.parse_args()
 
     # Загрузка ответов из БД
@@ -225,6 +271,10 @@ def main():
 
     print(f"После очистки и разбиения: {len(answers)} фрагментов")
 
+    # Уровень 0: Полные ответы
+    print("\n=== Уровень 0: Частотность полных ответов ===")
+    top_answers = count_full_answers(answers, top_n=args.top_n)
+
     # Уровень 1: NER
     print("\n=== Уровень 1: NER (natasha) ===")
     entities = extract_entities(answers)
@@ -236,6 +286,9 @@ def main():
     # Сохранение
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+    (OUTPUT_DIR / "top_answers.json").write_text(
+        json.dumps(top_answers, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     (OUTPUT_DIR / "entities.json").write_text(
         json.dumps(entities, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -247,6 +300,7 @@ def main():
         "generated_at": datetime.now().isoformat(),
         "total_questions": len(rows),
         "total_fragments": len(answers),
+        "unique_top_answers": len(top_answers["top_answers"]),
         "unique_persons": len(entities["PER"]),
         "unique_locations": len(entities["LOC"]),
         "unique_orgs": len(entities["ORG"]),
@@ -259,6 +313,7 @@ def main():
 
     print(f"\n=== Готово ===")
     print(f"Результаты: {OUTPUT_DIR}")
+    print(f"  Топ ответов: {meta['unique_top_answers']}")
     print(f"  Людей: {meta['unique_persons']}")
     print(f"  Мест: {meta['unique_locations']}")
     print(f"  Организаций: {meta['unique_orgs']}")
@@ -266,17 +321,18 @@ def main():
     print(f"  Биграмм: {meta['unique_bigrams']}")
 
     # Превью
-    print("\n--- Топ-10 людей ---")
+    print("\n--- Топ-20 ответов ---")
+    for norm, cnt in top_answers["top_answers"][:20]:
+        display = top_answers["display_forms"].get(norm, norm)
+        print(f"  {display}: {cnt}")
+
+    print("\n--- Топ-10 людей (NER) ---")
     for name, cnt in entities["PER"][:10]:
         print(f"  {name}: {cnt}")
 
-    print("\n--- Топ-10 мест ---")
+    print("\n--- Топ-10 мест (NER) ---")
     for name, cnt in entities["LOC"][:10]:
         print(f"  {name}: {cnt}")
-
-    print("\n--- Топ-10 ключевых слов ---")
-    for word, cnt in keywords["lemmas"][:10]:
-        print(f"  {word}: {cnt}")
 
 
 if __name__ == "__main__":

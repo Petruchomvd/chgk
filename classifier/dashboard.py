@@ -1,6 +1,7 @@
 """Rich-дашборд для визуализации прогресса классификации ЧГК-вопросов."""
 
 import sys
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -62,6 +63,7 @@ class ClassificationDashboard:
         method: str = "",
         twostage: bool = False,
         few_shot: bool = True,
+        provider=None,
     ):
         self.model = model
         self.total = total
@@ -69,6 +71,7 @@ class ClassificationDashboard:
         self.method = method
         self.twostage = twostage
         self.few_shot = few_shot
+        self.provider = provider
 
         self.success = 0
         self.failed = 0
@@ -82,6 +85,7 @@ class ClassificationDashboard:
         self.total_confidence = 0.0
         self.confidence_count = 0
 
+        self._lock = threading.Lock()
         self.console = Console(force_terminal=True)
         self.live: Optional[Live] = None
 
@@ -98,21 +102,22 @@ class ClassificationDashboard:
         self.live.start()
 
     def update(self, data: dict) -> None:
-        topics = data.get("topics")
-        saved = data.get("saved_topics", [])
-        self.total_classify_time += data.get("classify_time", 0)
+        with self._lock:
+            topics = data.get("topics")
+            saved = data.get("saved_topics", [])
+            self.total_classify_time += data.get("classify_time", 0)
 
-        if topics:
-            self.success += 1
-            for t in saved:
-                self.category_counts[t["cat"]] = self.category_counts.get(t["cat"], 0) + 1
-                self.total_confidence += t["conf"]
-                self.confidence_count += 1
-        else:
-            self.failed += 1
+            if topics:
+                self.success += 1
+                for t in saved:
+                    self.category_counts[t["cat"]] = self.category_counts.get(t["cat"], 0) + 1
+                    self.total_confidence += t["conf"]
+                    self.confidence_count += 1
+            else:
+                self.failed += 1
 
-        self.processed = self.success + self.failed
-        self.recent.append(data)
+            self.processed = self.success + self.failed
+            self.recent.append(data)
 
         if self.live:
             self.live.update(self._build())
@@ -136,9 +141,11 @@ class ClassificationDashboard:
 
     def _render_header(self) -> Panel:
         mode = "двухэтапный" if self.twostage else "одноэтапный"
+        provider_name = self.provider.config.name if self.provider else "ollama"
         header_text = Text.assemble(
             ("ЧГК Классификация", "bold white"),
             ("  ", ""),
+            (f"[{provider_name}] ", "dim"),
             (self.model, "bold cyan"),
             ("  ", ""),
             (mode, "italic"),
@@ -251,7 +258,7 @@ class ClassificationDashboard:
         avg_conf = self.total_confidence / self.confidence_count if self.confidence_count > 0 else 0
         avg_time = self.total_classify_time / self.processed if self.processed > 0 else 0
 
-        return Text.assemble(
+        parts = [
             (" ✅ ", ""),
             (str(self.success), "bold green"),
             ("  ❌ ", ""),
@@ -262,7 +269,18 @@ class ClassificationDashboard:
             ("  |  ", "dim"),
             ("Ср.время: ", "dim"),
             (f"{avg_time:.1f}с", "bold cyan"),
-        )
+        ]
+
+        # Стоимость (для платных провайдеров)
+        if self.provider and self.provider.config.cost_per_1m_input > 0:
+            cost = self.provider.estimated_cost
+            parts.extend([
+                ("  |  ", "dim"),
+                ("Стоимость: ", "dim"),
+                (f"${cost:.2f}", "bold yellow"),
+            ])
+
+        return Text.assemble(*parts)
 
     # ─── Финальный отчёт ─────────────────────────────────────────
 
@@ -281,6 +299,8 @@ class ClassificationDashboard:
         summary.add_column("key", style="bold", width=20)
         summary.add_column("value")
 
+        if self.provider:
+            summary.add_row("Провайдер", f"[dim]{self.provider.config.name}[/]")
         summary.add_row("Модель", f"[cyan]{self.model}[/]")
         summary.add_row("Обработано", f"{self.processed} из {self.total}")
         summary.add_row("Успешно", f"[green]{self.success}[/]")
@@ -288,6 +308,9 @@ class ClassificationDashboard:
         summary.add_row("Время", self._fmt_duration(elapsed))
         summary.add_row("Скорость", f"{avg_time:.1f} сек/вопрос")
         summary.add_row("Ср. уверенность", f"{avg_conf:.2f}")
+        if self.provider and self.provider.config.cost_per_1m_input > 0:
+            cost = self.provider.estimated_cost
+            summary.add_row("Стоимость", f"[yellow]${cost:.2f}[/]")
 
         self.console.print(summary)
 

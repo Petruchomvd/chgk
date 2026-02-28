@@ -1,4 +1,9 @@
-"""Интеграция с Ollama и Groq для классификации ЧГК-вопросов."""
+"""Интеграция с Ollama и Groq для классификации ЧГК-вопросов.
+
+DEPRECATED: Этот модуль сохранён для обратной совместимости со скриптами
+benchmark.py, compare_models.py и т.д. Новый код использует
+classifier.providers и classifier.classifier.
+"""
 
 import json
 import time

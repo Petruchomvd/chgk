@@ -37,12 +37,21 @@ OLLAMA_MODEL = "qwen2.5:7b-instruct-q4_K_M"
 OLLAMA_FALLBACK_MODEL = "qwen2.5:3b-instruct"
 CLASSIFICATION_BATCH_SIZE = 100
 CLASSIFICATION_TEMPERATURE = 0.1
-MIN_CONFIDENCE = 0.3
+MIN_CONFIDENCE = 0.4
 
 # Groq API (облачная классификация)
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = "llama-3.3-70b-versatile"
 GROQ_RATE_LIMIT_DELAY = 3  # секунды между запросами (free tier ~30 req/min)
+
+# OpenAI API
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+
+# Anthropic API
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# Google Gemini API
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 
 # Telegram-уведомления (можно задать через .env или переменные окружения)
 TELEGRAM_BOT_TOKEN = os.environ.get("CHGK_TG_BOT_TOKEN", "")

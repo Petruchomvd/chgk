@@ -134,10 +134,11 @@ def extract_pack_metadata_from_html(html: str, pack_id: int) -> Dict[str, Any]:
 
     Стратегия: сначала из JSON (Next.js payload), затем BS4 fallback.
     """
-    # --- JSON-подход (из вопросов берём packTitle, pubDate, endDate) ---
+    # --- JSON-подход (из вопросов берём packTitle, pubDate, endDate, startDate) ---
     json_title = None
     json_pub_date = None
     json_end_date = None
+    json_start_date = None
 
     pushes = _extract_push_blocks(html)
     for block in pushes:
@@ -153,12 +154,15 @@ def extract_pack_metadata_from_html(html: str, pack_id: int) -> Dict[str, Any]:
         title_m = re.search(r'"packTitle":"([^"]*)"', content)
         pub_m = re.search(r'"pubDate":"([^"]*)"', content)
         end_m = re.search(r'"endDate":"([^"]*)"', content)
+        start_m = re.search(r'"startDate":"([^"]*)"', content)
         if title_m:
             json_title = title_m.group(1)
         if pub_m:
             json_pub_date = pub_m.group(1)[:10]  # YYYY-MM-DD
         if end_m:
             json_end_date = end_m.group(1)[:10]
+        if start_m:
+            json_start_date = start_m.group(1)[:10]
         break
 
     # --- BS4 fallback (для teams_played, difficulty, start_date) ---
@@ -219,7 +223,7 @@ def extract_pack_metadata_from_html(html: str, pack_id: int) -> Dict[str, Any]:
         "id": pack_id,
         "title": json_title or bs4_title,
         "question_count": _first_int(_find(["вопр"])),
-        "start_date": parse_date(_find(["начал"])),
+        "start_date": json_start_date or parse_date(_find(["начал"])),
         "end_date": json_end_date or parse_date(_find(["окон", "заверш"])),
         "published_date": json_pub_date or parse_date(_find(["опублик", "публика"])),
         "teams_played": _sum_ints(_find(["команд"])),

@@ -61,6 +61,7 @@ def _render_config(conn, project_root: Path):
             "Категории",
             list(cat_map.keys()),
             default=list(cat_map.keys()),
+            key="train_categories",
         )
         category_ids = [cat_map[c] for c in selected_cats]
 
@@ -68,20 +69,21 @@ def _render_config(conn, project_root: Path):
             subs = get_subcategories_for_categories(conn, category_ids)
             sub_labels = {f"{s['category_name']} → {s['name_ru']}": s["id"] for s in subs}
             selected_subs = st.multiselect(
-                "Подкатегории (все, если не выбрано)", list(sub_labels.keys())
+                "Подкатегории (все, если не выбрано)", list(sub_labels.keys()),
+                key="train_subcategories",
             )
             if selected_subs:
                 subcategory_ids = [sub_labels[s] for s in selected_subs]
 
         models = get_available_models(conn)
         model_options = ["Все модели"] + models
-        model_sel = st.selectbox("Модель классификации", model_options)
+        model_sel = st.selectbox("Модель классификации", model_options, key="train_model")
         if model_sel != "Все модели":
             model_filter = model_sel
 
     elif mode == "Джентльменский набор":
         gentleman_options = ["Все"] + GENTLEMAN_CATEGORIES
-        gentleman_sel = st.selectbox("Категория джентльменского набора", gentleman_options)
+        gentleman_sel = st.selectbox("Категория джентльменского набора", gentleman_options, key="train_gentleman_cat")
         if gentleman_sel != "Все":
             gentleman_cat = gentleman_sel
 

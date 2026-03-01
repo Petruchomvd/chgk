@@ -161,7 +161,8 @@ if model_filter:
 
 st.sidebar.markdown("---")
 PAGES = ["Обзор", "Категории", "Тренды", "Рекомендации", "Авторы",
-         "Сравнение моделей", "Уверенность", "Вопросы", "Джентльменский набор"]
+         "Сравнение моделей", "Уверенность", "Вопросы", "Джентльменский набор",
+         "Тренировка"]
 page = st.sidebar.radio("Раздел", PAGES, label_visibility="collapsed")
 
 # ═══════════════ Обзор ═════════════════════════════════════════════
@@ -876,3 +877,7 @@ elif page == "Джентльменский набор":
         with tab_bg:
             _show_tab(ctx_keywords["bigrams"], "Биграмма", "Вопросов",
                       "Топ биграмм (контекст)", "#911eb4", {})
+
+elif page == "Тренировка":
+    from dashboard.training import render_training_page
+    render_training_page(conn, PROJECT_ROOT)

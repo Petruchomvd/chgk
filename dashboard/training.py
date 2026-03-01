@@ -210,7 +210,8 @@ def _render_quiz(conn):
     if razdatka_text:
         st.info(f"**Раздатка:** {razdatka_text}")
     if razdatka_pic:
-        st.image(razdatka_pic, caption="Раздатка")
+        pic_url = razdatka_pic if razdatka_pic.startswith("http") else f"https://gotquestions.online{razdatka_pic}"
+        st.image(pic_url, caption="Раздатка")
 
     # --- Текст вопроса ---
     with st.container(border=True):

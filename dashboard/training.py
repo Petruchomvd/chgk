@@ -213,11 +213,8 @@ def _render_quiz(conn):
         st.image(razdatka_pic, caption="Раздатка")
 
     # --- Текст вопроса ---
-    st.markdown(
-        f'<div style="font-size:1.15em; padding:1em; background:#f0f2f6; '
-        f'border-radius:8px; margin:0.5em 0; line-height:1.6">{q["text"]}</div>',
-        unsafe_allow_html=True,
-    )
+    with st.container(border=True):
+        st.markdown(q["text"])
 
     # --- Таймер ---
     elapsed = time.time() - ss.quiz_q_start_time

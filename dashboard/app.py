@@ -141,29 +141,36 @@ def _normalize_gentleman_categories(raw_categories: dict) -> dict[str, list[list
 
 st.sidebar.title("ЧГК Анализ")
 
-models = get_available_models(conn)
-model_options = ["Все модели"] + models
-selected_model = st.sidebar.selectbox("Модель классификации", model_options)
-model_filter = None if selected_model == "Все модели" else selected_model
+SECTIONS = ["Обзор", "Аналитика", "Тренировка"]
+section = st.sidebar.radio("Раздел", SECTIONS, label_visibility="collapsed")
 
-st.sidebar.markdown("---")
+ANALYTICS_PAGES = [
+    "Категории", "Тренды", "Рекомендации", "Авторы",
+    "Сравнение моделей", "Уверенность", "Вопросы", "Джентльменский набор",
+]
 
-stats = get_overview_stats(conn, model_filter)
-st.sidebar.metric("Всего вопросов", f"{stats['total_questions']:,}")
-st.sidebar.metric("Пакетов", f"{stats['total_packs']:,}")
-st.sidebar.metric("Классифицировано", f"{stats['classified']:,}")
-st.sidebar.metric("Покрытие", f"{stats['classification_pct']}%")
+model_filter = None
+page = section  # default
 
-if model_filter:
-    st.sidebar.markdown(f"**Фильтр:** `{model_filter}`")
+if section == "Аналитика":
+    st.sidebar.markdown("---")
+    page = st.sidebar.radio("Страница", ANALYTICS_PAGES, label_visibility="collapsed")
 
-# ─── Навигация (одна страница за раз — быстрая загрузка) ──────────
+if section != "Тренировка":
+    st.sidebar.markdown("---")
+    models = get_available_models(conn)
+    model_options = ["Все модели"] + models
+    selected_model = st.sidebar.selectbox("Модель классификации", model_options)
+    model_filter = None if selected_model == "Все модели" else selected_model
 
-st.sidebar.markdown("---")
-PAGES = ["Обзор", "Категории", "Тренды", "Рекомендации", "Авторы",
-         "Сравнение моделей", "Уверенность", "Вопросы", "Джентльменский набор",
-         "Тренировка"]
-page = st.sidebar.radio("Раздел", PAGES, label_visibility="collapsed")
+    stats = get_overview_stats(conn, model_filter)
+    st.sidebar.metric("Всего вопросов", f"{stats['total_questions']:,}")
+    st.sidebar.metric("Пакетов", f"{stats['total_packs']:,}")
+    st.sidebar.metric("Классифицировано", f"{stats['classified']:,}")
+    st.sidebar.metric("Покрытие", f"{stats['classification_pct']}%")
+
+    if model_filter:
+        st.sidebar.markdown(f"**Фильтр:** `{model_filter}`")
 
 # ═══════════════ Обзор ═════════════════════════════════════════════
 

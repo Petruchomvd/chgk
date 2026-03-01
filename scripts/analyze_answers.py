@@ -47,6 +47,13 @@ ALL_STOPWORDS = {
 }
 
 OUTPUT_DIR = PROJECT_ROOT / "data" / "gentleman_set"
+ORG_KEYWORDS = {
+    "компания", "корпорация", "фирма", "бренд", "банк", "университет",
+    "институт", "академия", "газета", "журнал", "издательство", "партия",
+    "клуб", "команда", "википедия", "wikipedia", "google", "apple",
+    "ikea", "lego", "starbucks", "microsoft", "openai", "nasa",
+    "ооо", "оао", "зао", "llc", "inc", "corp", "ltd", "gmbh",
+}
 
 # Низкоинформативные ответы, которые не должны попадать в «джентльменский набор»
 LOW_INFO_EXACT_ANSWERS = {
@@ -106,6 +113,27 @@ def low_info_reason(normalized: str) -> str | None:
     return None
 
 
+def is_org_like_entity(name: str) -> bool:
+    """Проверить, похожа ли сущность на организацию/бренд."""
+    text = name.strip()
+    if not text:
+        return False
+
+    lower = text.lower()
+    if any(k in lower for k in ORG_KEYWORDS):
+        return True
+
+    # Аббревиатуры типа ООН, НАТО, МКС, NASA
+    if re.fullmatch(r"[A-ZА-ЯЁ0-9]{2,8}", text):
+        return True
+
+    # Латинские бренды с заглавной буквы (Google, Apple)
+    if re.search(r"[A-Za-z]", text) and any(ch.isupper() for ch in text):
+        return True
+
+    return False
+
+
 # ── Очистка ответов ──────────────────────────────────────────────
 
 def clean_answer(text: str) -> str:
@@ -146,23 +174,25 @@ def split_answer(text: str) -> list[str]:
 # ── Уровень 0: Частотность полных ответов ────────────────────────
 
 def count_full_answers(
-    answers: list[tuple[int, str]],
+    answers: list[tuple[int, int, str]],
     top_n: int = 1000,
 ) -> dict:
     """Подсчитать частотность полных ответов.
 
     Нормализует регистр для подсчёта, но сохраняет оригинальное
     написание самого частого варианта (display form).
+    Также трекает pack diversity — количество уникальных паков для каждого ответа.
     """
     raw_answer_counter = Counter()
     filtered_answer_counter = Counter()
     filtered_answer_reason: dict[str, str] = {}
     answer_counter = Counter()
     answer_questions: dict[str, list[int]] = {}
+    answer_packs: dict[str, set[int]] = {}  # SWAG: pack diversity
     # normalized -> Counter(original_forms)
     original_forms: dict[str, Counter] = {}
 
-    for qid, text in answers:
+    for qid, pack_id, text in answers:
         normalized = normalize_answer_key(text)
         if not normalized:
             continue
@@ -179,6 +209,7 @@ def count_full_answers(
 
         answer_counter[normalized] += 1
         answer_questions.setdefault(normalized, []).append(qid)
+        answer_packs.setdefault(normalized, set()).add(pack_id)
 
     # Display form: самый частый вариант написания
     display_forms = {}
@@ -188,6 +219,9 @@ def count_full_answers(
     top = answer_counter.most_common(top_n)
     filtered_top = filtered_answer_counter.most_common(200)
 
+    # SWAG: pack counts для топ-ответов
+    pack_counts = {k: len(answer_packs.get(k, set())) for k, _ in top}
+
     print(f"  Уникальных ответов (до фильтра): {len(raw_answer_counter)}")
     print(f"  Отфильтровано как низкоинформативные: {len(filtered_answer_counter)}")
     print(f"  Уникальных ответов (после фильтра): {len(answer_counter)}")
@@ -195,6 +229,7 @@ def count_full_answers(
 
     return {
         "top_answers": top,
+        "pack_counts": pack_counts,
         "display_forms": {k: display_forms[k] for k, _ in top},
         "answer_questions": {
             k: v for k, v in answer_questions.items() if len(v) >= 2
@@ -232,7 +267,7 @@ def extract_entities(answers: list[tuple[int, str]]) -> dict:
 
     per_counter = Counter()  # люди
     loc_counter = Counter()  # места
-    org_counter = Counter()  # организации
+    org_counter = Counter()  # сырые ORG
 
     # entity -> [question_ids]
     entity_questions: dict[str, list[int]] = {}
@@ -262,13 +297,25 @@ def extract_entities(answers: list[tuple[int, str]]) -> dict:
 
             entity_questions.setdefault(normal, []).append(qid)
 
+    # Постфильтрация ORG: убираем не-похожие на организации и пересечения с PER/LOC
+    org_filtered = Counter()
+    for name, cnt in org_counter.items():
+        if not is_org_like_entity(name):
+            continue
+        if per_counter.get(name, 0) >= cnt:
+            continue
+        if loc_counter.get(name, 0) >= cnt:
+            continue
+        org_filtered[name] = cnt
+
     print(f"  NER завершен: {len(per_counter)} людей, "
-          f"{len(loc_counter)} мест, {len(org_counter)} организаций")
+          f"{len(loc_counter)} мест, {len(org_filtered)} организаций "
+          f"(сырых ORG: {len(org_counter)})")
 
     return {
         "PER": per_counter.most_common(300),
         "LOC": loc_counter.most_common(300),
-        "ORG": org_counter.most_common(300),
+        "ORG": org_filtered.most_common(300),
         "entity_questions": {
             k: v for k, v in entity_questions.items() if len(v) >= 2
         },
@@ -330,39 +377,54 @@ def main():
     )
     parser.add_argument("--limit", type=int, default=None, help="Ограничить кол-во вопросов")
     parser.add_argument("--top-n", type=int, default=1000, help="Топ-N полных ответов (по умолчанию 1000)")
+    parser.add_argument(
+        "--mode", default="answers", choices=["answers", "context"],
+        help="Режим: answers (только ответы) или context (text+answer+comment)"
+    )
     args = parser.parse_args()
 
-    # Загрузка ответов из БД
     conn = sqlite3.connect(str(DB_PATH))
 
-    sql = "SELECT id, answer FROM questions WHERE answer IS NOT NULL AND answer != ''"
+    if args.mode == "context":
+        _run_context_mode(conn, args)
+    else:
+        _run_answers_mode(conn, args)
+
+    conn.close()
+
+
+def _run_answers_mode(conn, args):
+    """Стандартный режим — анализ только ответов."""
+    sql = "SELECT q.id, q.pack_id, q.answer FROM questions q WHERE q.answer IS NOT NULL AND q.answer != ''"
     if args.limit:
         sql += f" LIMIT {args.limit}"
 
     rows = conn.execute(sql).fetchall()
-    conn.close()
-    print(f"Загружено ответов: {len(rows)}")
+    print(f"[answers] Загружено ответов: {len(rows)}")
 
-    # Очистка: answer → список (qid, clean_text)
+    # Очистка: answer → список (qid, pack_id, clean_text)
     answers = []
-    for qid, answer in rows:
+    for qid, pack_id, answer in rows:
         for part in split_answer(clean_answer(answer)):
             if part:
-                answers.append((qid, part))
+                answers.append((qid, pack_id, part))
 
     print(f"После очистки и разбиения: {len(answers)} фрагментов")
 
-    # Уровень 0: Полные ответы
+    # Уровень 0: Полные ответы (с pack_id для diversity)
     print("\n=== Уровень 0: Частотность полных ответов ===")
     top_answers = count_full_answers(answers, top_n=args.top_n)
 
+    # Для NER и keywords нужен формат (qid, text) без pack_id
+    answers_flat = [(qid, text) for qid, _pack_id, text in answers]
+
     # Уровень 1: NER
     print("\n=== Уровень 1: NER (natasha) ===")
-    entities = extract_entities(answers)
+    entities = extract_entities(answers_flat)
 
     # Уровень 2: Леммы
     print("\n=== Уровень 2: Леммы + биграммы ===")
-    keywords = extract_keywords(answers)
+    keywords = extract_keywords(answers_flat)
 
     # Сохранение
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -417,6 +479,83 @@ def main():
 
     print("\n--- Топ-10 мест (NER) ---")
     for name, cnt in entities["LOC"][:10]:
+        print(f"  {name}: {cnt}")
+
+
+def _run_context_mode(conn, args):
+    """Режим 'По контексту' — NER по text + answer + comment."""
+    sql = """SELECT q.id, q.text, q.answer, q.comment
+             FROM questions q
+             WHERE q.text IS NOT NULL AND q.text != ''"""
+    if args.limit:
+        sql += f" LIMIT {args.limit}"
+
+    rows = conn.execute(sql).fetchall()
+    print(f"[context] Загружено вопросов: {len(rows)}")
+
+    # Собираем все текстовые фрагменты для NER
+    # Дедупликация: одна сущность → один вопрос (не считать повторы внутри вопроса)
+    fragments: list[tuple[int, str]] = []
+    for qid, text, answer, comment in rows:
+        combined_parts = []
+        if text:
+            combined_parts.append(clean_answer(text))
+        if answer:
+            combined_parts.append(clean_answer(answer))
+        if comment:
+            combined_parts.append(clean_answer(comment))
+        if combined_parts:
+            fragments.append((qid, " ".join(combined_parts)))
+
+    print(f"Подготовлено фрагментов: {len(fragments)}")
+
+    # NER
+    print("\n=== NER (natasha) по всему контексту ===")
+    entities = extract_entities(fragments)
+
+    # Keywords
+    print("\n=== Леммы + биграммы по всему контексту ===")
+    keywords = extract_keywords(fragments)
+
+    # Сохранение в отдельные файлы
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    (OUTPUT_DIR / "entities_context.json").write_text(
+        json.dumps(entities, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (OUTPUT_DIR / "keywords_context.json").write_text(
+        json.dumps(keywords, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    meta = {
+        "generated_at": datetime.now().isoformat(),
+        "mode": "context",
+        "total_questions": len(rows),
+        "total_fragments": len(fragments),
+        "unique_persons": len(entities["PER"]),
+        "unique_locations": len(entities["LOC"]),
+        "unique_orgs": len(entities["ORG"]),
+        "unique_keywords": len(keywords["lemmas"]),
+        "unique_bigrams": len(keywords["bigrams"]),
+    }
+    (OUTPUT_DIR / "meta_context.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    print(f"\n=== Готово (context mode) ===")
+    print(f"Результаты: {OUTPUT_DIR}")
+    print(f"  Людей: {meta['unique_persons']}")
+    print(f"  Мест: {meta['unique_locations']}")
+    print(f"  Организаций: {meta['unique_orgs']}")
+    print(f"  Ключевых слов: {meta['unique_keywords']}")
+    print(f"  Биграмм: {meta['unique_bigrams']}")
+
+    print("\n--- Топ-15 людей (контекст) ---")
+    for name, cnt in entities["PER"][:15]:
+        print(f"  {name}: {cnt}")
+
+    print("\n--- Топ-15 мест (контекст) ---")
+    for name, cnt in entities["LOC"][:15]:
         print(f"  {name}: {cnt}")
 
 

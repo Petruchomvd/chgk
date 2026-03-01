@@ -610,6 +610,7 @@ elif page == "Джентльменский набор":
     has_categorized = (data_dir / "categorized_answers.json").exists()
     has_top_answers = (data_dir / "top_answers.json").exists()
     has_entities = (data_dir / "entities.json").exists()
+    has_context = (data_dir / "entities_context.json").exists()
 
     if not has_entities and not has_top_answers:
         st.warning("Данные ещё не сгенерированы. Запустите:\n\n"
@@ -629,7 +630,7 @@ elif page == "Джентльменский набор":
     top_n = st.slider("Показать топ-N", 10, 100, 30)
 
     def _show_tab(data_list, name_label, count_label, title, color,
-                  entity_questions, display_forms=None):
+                  entity_questions, display_forms=None, pack_counts=None):
         """Отобразить вкладку с графиком, таблицей и drill-down."""
         filtered = [(name, cnt) for name, cnt in data_list if cnt >= min_freq]
         if not filtered:
@@ -642,7 +643,22 @@ elif page == "Джентльменский набор":
         else:
             display_data = filtered
 
-        df = pd.DataFrame(display_data, columns=[name_label, count_label])
+        # Собрать DataFrame с опциональной колонкой "Пакетов"
+        if pack_counts:
+            rows = []
+            for (name, cnt), (orig_name, _) in zip(display_data, filtered):
+                packs = pack_counts.get(orig_name, 0)
+                rows.append((name, cnt, packs))
+            df = pd.DataFrame(rows, columns=[name_label, count_label, "Пакетов"])
+        else:
+            df = pd.DataFrame(display_data, columns=[name_label, count_label])
+
+        shown_n = min(top_n, len(df))
+        if shown_n < top_n:
+            st.caption(
+                f"В категории доступно {shown_n} элементов при текущей "
+                f"минимальной частоте ({min_freq})."
+            )
 
         col_chart, col_table = st.columns([2, 1])
         with col_chart:
@@ -651,7 +667,7 @@ elif page == "Джентльменский набор":
             )
             st.plotly_chart(fig, use_container_width=True)
         with col_table:
-            st.dataframe(df.head(top_n), use_container_width=True, hide_index=True)
+            st.dataframe(df.head(shown_n), use_container_width=True, hide_index=True)
 
         # Drill-down
         drill_options = filtered[:50]
@@ -693,6 +709,8 @@ elif page == "Джентльменский набор":
         views.append("Все ответы")
     if has_entities:
         views.append("NER и ключевые слова")
+    if has_context:
+        views.append("По контексту")
 
     view = st.radio("Режим", views, horizontal=True)
 
@@ -710,12 +728,26 @@ elif page == "Джентльменский набор":
             **cat_data.get("display_forms", {}),
         }
         answer_questions = top_data.get("answer_questions", {})
+        pack_counts = top_data.get("pack_counts", {})
 
+        # Метрики категоризации
+        cat_meta = cat_data.get("meta", {})
         st.sidebar.markdown(f"Модель: {cat_data.get('model', '?')}")
         st.sidebar.markdown(f"Категоризировано: {cat_data.get('total_categorized', 0)}")
+        if cat_meta.get("whitelist_categorized"):
+            st.sidebar.markdown(f"  whitelist: {cat_meta['whitelist_categorized']}")
+        if cat_meta.get("llm_categorized"):
+            st.sidebar.markdown(f"  LLM: {cat_meta['llm_categorized']}")
 
         raw_categories = cat_data.get("categories", {})
         categories = _normalize_gentleman_categories(raw_categories)
+
+        # Метрики по категориям
+        cat_cols = st.columns(len(GENTLEMAN_CATEGORY_ORDER))
+        for col, cat_name in zip(cat_cols, GENTLEMAN_CATEGORY_ORDER):
+            items = categories.get(cat_name, [])
+            col.metric(cat_name, len(items))
+
         tab_names = [name for name in GENTLEMAN_CATEGORY_ORDER if categories.get(name)]
         if not tab_names:
             st.info("Нет категоризированных данных")
@@ -729,6 +761,7 @@ elif page == "Джентльменский набор":
                         "Ответ", "Вопросов",
                         f"Топ: {cat_name}", color,
                         answer_questions, display_forms,
+                        pack_counts=pack_counts,
                     )
 
     # ── Режим 2: Все ответы (без категорий) ──
@@ -778,3 +811,45 @@ elif page == "Джентльменский набор":
         with tab_bg:
             _show_tab(keywords["bigrams"], "Биграмма", "Вопросов",
                       "Топ биграмм", "#911eb4", {})
+
+    # ── Режим 4: По контексту (text + answer + comment) ──
+    elif view == "По контексту":
+        ctx_entities = json.loads(
+            (data_dir / "entities_context.json").read_text(encoding="utf-8")
+        )
+        ctx_keywords = json.loads(
+            (data_dir / "keywords_context.json").read_text(encoding="utf-8")
+        )
+
+        if (data_dir / "meta_context.json").exists():
+            ctx_meta = json.loads(
+                (data_dir / "meta_context.json").read_text(encoding="utf-8")
+            )
+            st.caption(
+                f"NER по полному контексту (вопрос + ответ + комментарий) | "
+                f"Вопросов: {ctx_meta.get('total_questions', '?'):,}"
+            )
+
+        tab_per, tab_loc, tab_org, tab_kw, tab_bg = st.tabs([
+            "Люди", "Места", "Организации", "Ключевые слова", "Биграммы"
+        ])
+
+        with tab_per:
+            _show_tab(ctx_entities["PER"], "Персона", "Вопросов",
+                      "Топ людей (контекст)", "#e6194b",
+                      ctx_entities.get("entity_questions", {}))
+        with tab_loc:
+            _show_tab(ctx_entities["LOC"], "Место", "Вопросов",
+                      "Топ мест (контекст)", "#f58231",
+                      ctx_entities.get("entity_questions", {}))
+        with tab_org:
+            _show_tab(ctx_entities["ORG"], "Организация", "Вопросов",
+                      "Топ организаций (контекст)", "#4363d8",
+                      ctx_entities.get("entity_questions", {}))
+        with tab_kw:
+            _show_tab(ctx_keywords["lemmas"], "Слово", "Вопросов",
+                      "Топ ключевых слов (контекст)", "#3cb44b",
+                      ctx_keywords.get("keyword_questions", {}))
+        with tab_bg:
+            _show_tab(ctx_keywords["bigrams"], "Биграмма", "Вопросов",
+                      "Топ биграмм (контекст)", "#911eb4", {})

@@ -692,8 +692,26 @@ elif page == "Джентльменский набор":
 
             qids = entity_questions.get(norm_key, [])
             if qids:
-                st.caption(f"Вопросов с «{selected_label}» в ответе: {len(qids)}")
-                qs = get_questions_by_ids(conn, qids, limit=15)
+                total_qs = len(qids)
+                per_page = 20
+                total_pages = max(1, (total_qs + per_page - 1) // per_page)
+
+                col_info, col_nav = st.columns([1, 1])
+                with col_info:
+                    st.caption(f"Вопросов с «{selected_label}» в ответе: {total_qs}")
+                with col_nav:
+                    if total_pages > 1:
+                        page_num = st.number_input(
+                            f"Страница (из {total_pages})",
+                            min_value=1, max_value=total_pages, value=1,
+                            key=f"page_{title}",
+                        )
+                    else:
+                        page_num = 1
+
+                page_start = (page_num - 1) * per_page
+                page_qids = qids[page_start:page_start + per_page]
+                qs = get_questions_by_ids(conn, page_qids, limit=per_page)
                 for q in qs:
                     with st.expander(f"#{q['id']} — {(q['text'] or '')[:100]}..."):
                         st.markdown(f"**Вопрос:** {q['text']}")
@@ -701,119 +719,124 @@ elif page == "Джентльменский набор":
                         if q.get("comment"):
                             st.markdown(f"**Комментарий:** {q['comment']}")
 
-    # ── Выбор режима ──
-    views = []
-    if has_categorized:
-        views.append("По категориям")
-    if has_top_answers:
-        views.append("Все ответы")
-    if has_entities:
-        views.append("NER и ключевые слова")
+    # ── Верхний уровень: По ответам / По контексту ──
+    source_options = ["По ответам"]
     if has_context:
-        views.append("По контексту")
+        source_options.append("По контексту (вопрос + ответ + комментарий)")
 
-    view = st.radio("Режим", views, horizontal=True)
+    source = st.radio("Источник данных", source_options, horizontal=True)
 
-    # ── Режим 1: Категоризированные ответы ──
-    if view == "По категориям":
-        cat_data = json.loads(
-            (data_dir / "categorized_answers.json").read_text(encoding="utf-8")
-        )
-        top_data = json.loads(
-            (data_dir / "top_answers.json").read_text(encoding="utf-8")
-        )
+    # ════════════════════════════════════════════════════════════
+    # По ответам
+    # ════════════════════════════════════════════════════════════
+    if source == "По ответам":
+        sub_views = []
+        if has_categorized:
+            sub_views.append("По категориям")
+        if has_top_answers:
+            sub_views.append("Все ответы")
+        if has_entities:
+            sub_views.append("NER и ключевые слова")
 
-        display_forms = {
-            **top_data.get("display_forms", {}),
-            **cat_data.get("display_forms", {}),
-        }
-        answer_questions = top_data.get("answer_questions", {})
-        pack_counts = top_data.get("pack_counts", {})
+        view = st.radio("Режим", sub_views, horizontal=True, key="answers_view")
 
-        # Метрики категоризации
-        cat_meta = cat_data.get("meta", {})
-        st.sidebar.markdown(f"Модель: {cat_data.get('model', '?')}")
-        st.sidebar.markdown(f"Категоризировано: {cat_data.get('total_categorized', 0)}")
-        if cat_meta.get("whitelist_categorized"):
-            st.sidebar.markdown(f"  whitelist: {cat_meta['whitelist_categorized']}")
-        if cat_meta.get("llm_categorized"):
-            st.sidebar.markdown(f"  LLM: {cat_meta['llm_categorized']}")
+        if view == "По категориям":
+            cat_data = json.loads(
+                (data_dir / "categorized_answers.json").read_text(encoding="utf-8")
+            )
+            top_data = json.loads(
+                (data_dir / "top_answers.json").read_text(encoding="utf-8")
+            )
 
-        raw_categories = cat_data.get("categories", {})
-        categories = _normalize_gentleman_categories(raw_categories)
+            display_forms = {
+                **top_data.get("display_forms", {}),
+                **cat_data.get("display_forms", {}),
+            }
+            answer_questions = top_data.get("answer_questions", {})
+            pack_counts = top_data.get("pack_counts", {})
 
-        # Метрики по категориям
-        cat_cols = st.columns(len(GENTLEMAN_CATEGORY_ORDER))
-        for col, cat_name in zip(cat_cols, GENTLEMAN_CATEGORY_ORDER):
-            items = categories.get(cat_name, [])
-            col.metric(cat_name, len(items))
+            cat_meta = cat_data.get("meta", {})
+            st.sidebar.markdown(f"Модель: {cat_data.get('model', '?')}")
+            st.sidebar.markdown(f"Категоризировано: {cat_data.get('total_categorized', 0)}")
+            if cat_meta.get("whitelist_categorized"):
+                st.sidebar.markdown(f"  whitelist: {cat_meta['whitelist_categorized']}")
+            if cat_meta.get("llm_categorized"):
+                st.sidebar.markdown(f"  LLM: {cat_meta['llm_categorized']}")
 
-        tab_names = [name for name in GENTLEMAN_CATEGORY_ORDER if categories.get(name)]
-        if not tab_names:
-            st.info("Нет категоризированных данных")
-        else:
-            tabs = st.tabs(tab_names)
-            for tab, cat_name in zip(tabs, tab_names):
-                with tab:
-                    color = GENTLEMAN_CATEGORY_COLORS.get(cat_name, "#666666")
-                    _show_tab(
-                        categories[cat_name],
-                        "Ответ", "Вопросов",
-                        f"Топ: {cat_name}", color,
-                        answer_questions, display_forms,
-                        pack_counts=pack_counts,
-                    )
+            raw_categories = cat_data.get("categories", {})
+            categories = _normalize_gentleman_categories(raw_categories)
 
-    # ── Режим 2: Все ответы (без категорий) ──
-    elif view == "Все ответы":
-        top_data = json.loads(
-            (data_dir / "top_answers.json").read_text(encoding="utf-8")
-        )
-        display_forms = top_data.get("display_forms", {})
-        answer_questions = top_data.get("answer_questions", {})
+            cat_cols = st.columns(len(GENTLEMAN_CATEGORY_ORDER))
+            for col, cat_name in zip(cat_cols, GENTLEMAN_CATEGORY_ORDER):
+                items = categories.get(cat_name, [])
+                col.metric(cat_name, len(items))
 
-        _show_tab(
-            top_data["top_answers"],
-            "Ответ", "Вопросов",
-            "Топ ответов ЧГК", "#4363d8",
-            answer_questions, display_forms,
-        )
+            tab_names = [name for name in GENTLEMAN_CATEGORY_ORDER if categories.get(name)]
+            if not tab_names:
+                st.info("Нет категоризированных данных")
+            else:
+                tabs = st.tabs(tab_names)
+                for tab, cat_name in zip(tabs, tab_names):
+                    with tab:
+                        color = GENTLEMAN_CATEGORY_COLORS.get(cat_name, "#666666")
+                        _show_tab(
+                            categories[cat_name],
+                            "Ответ", "Вопросов",
+                            f"Топ: {cat_name}", color,
+                            answer_questions, display_forms,
+                            pack_counts=pack_counts,
+                        )
 
-    # ── Режим 3: NER и ключевые слова ──
-    elif view == "NER и ключевые слова":
-        entities = json.loads(
-            (data_dir / "entities.json").read_text(encoding="utf-8")
-        )
-        keywords = json.loads(
-            (data_dir / "keywords.json").read_text(encoding="utf-8")
-        )
+        elif view == "Все ответы":
+            top_data = json.loads(
+                (data_dir / "top_answers.json").read_text(encoding="utf-8")
+            )
+            display_forms = top_data.get("display_forms", {})
+            answer_questions = top_data.get("answer_questions", {})
 
-        tab_per, tab_loc, tab_org, tab_kw, tab_bg = st.tabs([
-            "Люди", "Места", "Организации", "Ключевые слова", "Биграммы"
-        ])
+            _show_tab(
+                top_data["top_answers"],
+                "Ответ", "Вопросов",
+                "Топ ответов ЧГК", "#4363d8",
+                answer_questions, display_forms,
+            )
 
-        with tab_per:
-            _show_tab(entities["PER"], "Персона", "Вопросов",
-                      "Топ людей в ответах", "#e6194b",
-                      entities.get("entity_questions", {}))
-        with tab_loc:
-            _show_tab(entities["LOC"], "Место", "Вопросов",
-                      "Топ мест в ответах", "#f58231",
-                      entities.get("entity_questions", {}))
-        with tab_org:
-            _show_tab(entities["ORG"], "Организация", "Вопросов",
-                      "Топ организаций в ответах", "#4363d8",
-                      entities.get("entity_questions", {}))
-        with tab_kw:
-            _show_tab(keywords["lemmas"], "Слово", "Вопросов",
-                      "Топ ключевых слов", "#3cb44b",
-                      keywords.get("keyword_questions", {}))
-        with tab_bg:
-            _show_tab(keywords["bigrams"], "Биграмма", "Вопросов",
-                      "Топ биграмм", "#911eb4", {})
+        elif view == "NER и ключевые слова":
+            entities = json.loads(
+                (data_dir / "entities.json").read_text(encoding="utf-8")
+            )
+            keywords = json.loads(
+                (data_dir / "keywords.json").read_text(encoding="utf-8")
+            )
 
-    # ── Режим 4: По контексту (text + answer + comment) ──
-    elif view == "По контексту":
+            tab_per, tab_loc, tab_org, tab_kw, tab_bg = st.tabs([
+                "Люди", "Места", "Организации", "Ключевые слова", "Биграммы"
+            ])
+
+            with tab_per:
+                _show_tab(entities["PER"], "Персона", "Вопросов",
+                          "Топ людей в ответах", "#e6194b",
+                          entities.get("entity_questions", {}))
+            with tab_loc:
+                _show_tab(entities["LOC"], "Место", "Вопросов",
+                          "Топ мест в ответах", "#f58231",
+                          entities.get("entity_questions", {}))
+            with tab_org:
+                _show_tab(entities["ORG"], "Организация", "Вопросов",
+                          "Топ организаций в ответах", "#4363d8",
+                          entities.get("entity_questions", {}))
+            with tab_kw:
+                _show_tab(keywords["lemmas"], "Слово", "Вопросов",
+                          "Топ ключевых слов", "#3cb44b",
+                          keywords.get("keyword_questions", {}))
+            with tab_bg:
+                _show_tab(keywords["bigrams"], "Биграмма", "Вопросов",
+                          "Топ биграмм", "#911eb4", {})
+
+    # ════════════════════════════════════════════════════════════
+    # По контексту
+    # ════════════════════════════════════════════════════════════
+    else:
         ctx_entities = json.loads(
             (data_dir / "entities_context.json").read_text(encoding="utf-8")
         )
@@ -826,7 +849,7 @@ elif page == "Джентльменский набор":
                 (data_dir / "meta_context.json").read_text(encoding="utf-8")
             )
             st.caption(
-                f"NER по полному контексту (вопрос + ответ + комментарий) | "
+                f"NER по полному контексту (вопрос + ответ + комментарий) · "
                 f"Вопросов: {ctx_meta.get('total_questions', '?'):,}"
             )
 

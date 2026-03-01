@@ -183,65 +183,40 @@ def get_unclassified_questions(
     conn: sqlite3.Connection,
     limit: Optional[int] = None,
     model_name: Optional[str] = None,
+    random_order: bool = True,
 ) -> List[Dict[str, Any]]:
     """Получить вопросы для классификации.
 
-    limit определяет ФИКСИРОВАННЫЙ набор (первые N по ID).
-    Все модели получают один и тот же набор, уже классифицированные пропускаются.
-    Это позволяет сравнивать результаты разных моделей на одних и тех же вопросах.
+    Уже классифицированные данной моделью пропускаются.
+    random_order=True — случайный порядок (равномерное покрытие пакетов).
+    random_order=False — по ID (для детерминистичного сравнения моделей).
     """
-    params: list = []
+    order = "RANDOM()" if random_order else "q.id"
+
+    if model_name:
+        sql = f"""
+            SELECT q.id, q.text, q.answer, q.comment
+            FROM questions q
+            WHERE q.id NOT IN (
+                SELECT DISTINCT question_id FROM question_topics WHERE model_name = ?
+            )
+            ORDER BY {order}
+        """
+        params: list = [model_name]
+    else:
+        sql = f"""
+            SELECT q.id, q.text, q.answer, q.comment
+            FROM questions q
+            WHERE q.id NOT IN (
+                SELECT DISTINCT question_id FROM question_topics
+            )
+            ORDER BY {order}
+        """
+        params = []
 
     if limit:
-        # Фиксированный набор (первые N по ID), минус уже классифицированные
-        if model_name:
-            sql = """
-                WITH candidate AS (
-                    SELECT q.id, q.text, q.answer, q.comment
-                    FROM questions q ORDER BY q.id LIMIT ?
-                )
-                SELECT c.id, c.text, c.answer, c.comment FROM candidate c
-                WHERE c.id NOT IN (
-                    SELECT DISTINCT question_id FROM question_topics WHERE model_name = ?
-                )
-                ORDER BY c.id
-            """
-            params = [limit, model_name]
-        else:
-            sql = """
-                WITH candidate AS (
-                    SELECT q.id, q.text, q.answer, q.comment
-                    FROM questions q ORDER BY q.id LIMIT ?
-                )
-                SELECT c.id, c.text, c.answer, c.comment FROM candidate c
-                WHERE c.id NOT IN (
-                    SELECT DISTINCT question_id FROM question_topics
-                )
-                ORDER BY c.id
-            """
-            params = [limit]
-    else:
-        # Все вопросы минус уже классифицированные
-        if model_name:
-            sql = """
-                SELECT q.id, q.text, q.answer, q.comment
-                FROM questions q
-                WHERE q.id NOT IN (
-                    SELECT DISTINCT question_id FROM question_topics WHERE model_name = ?
-                )
-                ORDER BY q.id
-            """
-            params = [model_name]
-        else:
-            sql = """
-                SELECT q.id, q.text, q.answer, q.comment
-                FROM questions q
-                WHERE q.id NOT IN (
-                    SELECT DISTINCT question_id FROM question_topics
-                )
-                ORDER BY q.id
-            """
-            params = []
+        sql += " LIMIT ?"
+        params.append(limit)
 
     return [dict(r) for r in conn.execute(sql, params).fetchall()]
 

@@ -4,6 +4,7 @@
     streamlit run dashboard/app.py
 """
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -14,6 +15,26 @@ import pandas as pd
 import streamlit as st
 
 from config import DB_PATH
+
+
+# ─── Git LFS: подтянуть реальные файлы если на Streamlit Cloud ────
+def _ensure_lfs():
+    """Если БД — LFS-pointer, выполнить git lfs pull."""
+    if not DB_PATH.exists():
+        return
+    # LFS pointer — текстовый файл < 1 КБ, начинается с "version "
+    if DB_PATH.stat().st_size < 1024:
+        try:
+            with open(DB_PATH, "r", encoding="utf-8") as f:
+                if f.read(8) == "version ":
+                    subprocess.run(
+                        ["git", "lfs", "pull"], cwd=str(DB_PATH.parent.parent),
+                        timeout=120, check=False,
+                    )
+        except (UnicodeDecodeError, OSError):
+            pass  # Настоящий бинарный файл — всё ок
+
+_ensure_lfs()
 from database.db import get_connection
 from dashboard.db_queries import (
     agreement_matrix,

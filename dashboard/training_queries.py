@@ -249,6 +249,7 @@ def _fetch_full_questions(
                q.comment, q.source, q.authors,
                q.razdatka_text, q.razdatka_pic,
                p.title AS pack_title, p.difficulty AS pack_difficulty,
+               p.link AS pack_link,
                c.name_ru AS category, s.name_ru AS subcategory,
                pt.confidence
         FROM questions q

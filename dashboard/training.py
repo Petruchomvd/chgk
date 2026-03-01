@@ -251,6 +251,9 @@ def _render_quiz(conn):
         source = q.get("source")
         if source:
             st.caption(f"Источник: {source}")
+        pack_link = q.get("pack_link")
+        if pack_link:
+            st.markdown(f"[Открыть на сайте]({pack_link})")
 
         col_knew, col_didnt = st.columns(2)
         with col_knew:

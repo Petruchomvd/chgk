@@ -91,6 +91,12 @@ def main():
         action="store_true",
         help="Отключить Rich-дашборд",
     )
+    parser.add_argument(
+        "--author",
+        type=str,
+        default=None,
+        help="Фильтр по автору пакета (подстрока, напр. 'Рождествин')",
+    )
     # Legacy-параметры (обратная совместимость)
     parser.add_argument("--groq", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--groq-key", type=str, default=None, help=argparse.SUPPRESS)
@@ -154,6 +160,7 @@ def main():
         twostage=twostage,
         use_dashboard=not args.no_dashboard,
         workers=args.workers,
+        author_filter=args.author,
     )
 
 

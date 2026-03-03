@@ -381,17 +381,32 @@ def subcategory_trends_by_year(
 # ─── Авторы ──────────────────────────────────────────────────────
 
 def top_authors(conn: sqlite3.Connection, limit: int = 20) -> List[Dict]:
-    """Топ-авторы по количеству пакетов."""
-    return [dict(r) for r in conn.execute("""
+    """Топ-авторы по количеству пакетов (авторы из соавторских строк разделяются)."""
+    from collections import defaultdict
+
+    rows = conn.execute("""
         SELECT p.authors, COUNT(*) AS pack_count,
                SUM(p.question_count) AS question_count
         FROM packs p
         WHERE p.authors IS NOT NULL AND p.authors != ''
           AND p.parse_status = 'parsed'
         GROUP BY p.authors
-        ORDER BY pack_count DESC
-        LIMIT ?
-    """, (limit,)).fetchall()]
+    """).fetchall()
+
+    author_packs: dict = defaultdict(int)
+    author_questions: dict = defaultdict(int)
+
+    for row in rows:
+        q_count = row["question_count"] or 0
+        for author in [a.strip() for a in row["authors"].split(",") if a.strip()]:
+            author_packs[author] += row["pack_count"]
+            author_questions[author] += q_count
+
+    sorted_authors = sorted(author_packs.items(), key=lambda x: x[1], reverse=True)
+    return [
+        {"authors": author, "pack_count": packs, "question_count": author_questions[author]}
+        for author, packs in sorted_authors[:limit]
+    ]
 
 
 def author_categories(

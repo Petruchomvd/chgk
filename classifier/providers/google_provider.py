@@ -29,16 +29,13 @@ class GoogleProvider(BaseLLMProvider):
         self._genai = None
 
     def _next_key(self) -> str:
+        """Взять следующий ключ из цикла (thread-safe)."""
         with self._lock:
             self._current_key = next(self._key_cycle)
             return self._current_key
 
-    def _get_genai(self):
-        import google.generativeai as genai
-        self._genai = genai
-        return genai
-
     def _chat_impl(self, messages: list, max_tokens: int) -> Optional[str]:
+        import time
         import google.generativeai as genai
 
         # Извлечь system из сообщений
@@ -51,9 +48,11 @@ class GoogleProvider(BaseLLMProvider):
                 role = "model" if msg["role"] == "assistant" else "user"
                 chat_messages.append({"role": role, "parts": [msg["content"]]})
 
-        # Пробуем все ключи по кругу при 429
-        for attempt in range(len(self._keys) + 1):
-            key = self._current_key
+        # Round-robin: каждый запрос берёт следующий ключ сразу
+        key = self._next_key()
+
+        consecutive_429 = 0
+        while True:
             try:
                 genai.configure(api_key=key)
                 model = genai.GenerativeModel(
@@ -86,14 +85,23 @@ class GoogleProvider(BaseLLMProvider):
             except Exception as e:
                 err_str = str(e).lower()
                 is_rate_limit = "429" in err_str or "resource exhausted" in err_str or "quota" in err_str
-                if is_rate_limit and len(self._keys) > 1 and attempt < len(self._keys):
-                    new_key = self._next_key()
-                    key_idx = self._keys.index(new_key) + 1
-                    print(f"[google] 429 на ключе #{self._keys.index(key) + 1}, переключаюсь на ключ #{key_idx}")
-                    continue
-                raise
+                if not is_rate_limit:
+                    raise
 
-        return None
+                consecutive_429 += 1
+                key_idx = self._keys.index(key) + 1
+
+                if consecutive_429 < len(self._keys):
+                    # Есть ещё ключи — пробуем следующий
+                    key = self._next_key()
+                    new_idx = self._keys.index(key) + 1
+                    print(f"[google] 429 на ключе #{key_idx}, переключаюсь на ключ #{new_idx}")
+                else:
+                    # Все ключи исчерпаны — ждём минуту
+                    print(f"[google] Все {len(self._keys)} ключей исчерпаны, жду 60с...")
+                    time.sleep(60)
+                    consecutive_429 = 0
+                    key = self._next_key()
 
     def is_available(self) -> bool:
         return bool(self._keys)

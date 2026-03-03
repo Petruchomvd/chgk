@@ -293,10 +293,19 @@ def growth_bar_chart(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
+_RADAR_CATEGORY_ORDER = [
+    "История", "Литература", "Наука и технологии", "География",
+    "Искусство", "Музыка", "Кино и театр", "Спорт",
+    "Язык и лингвистика", "Религия и мифология", "Общество и политика",
+    "Быт и повседневность", "Природа и животные", "Логика и wordplay",
+]
+
+
 def author_radar_chart(data: list, author: str) -> go.Figure:
-    """Radar-chart тематического профиля автора."""
-    categories = [d["category"] for d in data]
-    counts = [d["count"] for d in data]
+    """Radar-chart тематического профиля автора с фиксированным порядком категорий."""
+    count_by_cat = {d["category"]: d["count"] for d in data}
+    categories = _RADAR_CATEGORY_ORDER
+    counts = [count_by_cat.get(cat, 0) for cat in categories]
     # Замкнуть фигуру
     categories = categories + [categories[0]]
     counts = counts + [counts[0]]

@@ -108,14 +108,22 @@ def create_provider(
 
     preset = PROVIDER_PRESETS[provider_name]
 
-    # Ключ API: аргумент > переменная окружения
-    if api_key is None and preset["env_key"]:
-        api_key = os.environ.get(preset["env_key"], "")
+    # Ключ(и) API: аргумент > переменная окружения
+    api_keys = []
+    if api_key:
+        # Один ключ передан явно (может быть comma-separated)
+        api_keys = [k.strip() for k in api_key.split(",") if k.strip()]
+    elif preset["env_key"]:
+        # Сначала ищем GOOGLE_API_KEYS (множество), потом GOOGLE_API_KEY
+        multi_key_env = preset["env_key"] + "S"  # GOOGLE_API_KEYS
+        raw = os.environ.get(multi_key_env, "") or os.environ.get(preset["env_key"], "")
+        api_keys = [k.strip() for k in raw.split(",") if k.strip()]
 
     config = ProviderConfig(
         name=provider_name,
         model=model or preset["default_model"],
-        api_key=api_key or "",
+        api_key=api_keys[0] if api_keys else "",
+        api_keys=api_keys,
         rate_limit_delay=preset["rate_limit_delay"],
         max_concurrent=preset["max_concurrent"],
         temperature=temperature,

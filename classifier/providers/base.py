@@ -13,6 +13,7 @@ class ProviderConfig:
     name: str
     model: str
     api_key: str = ""
+    api_keys: List[str] = field(default_factory=list)  # для ротации ключей
     base_url: str = ""
     rate_limit_delay: float = 0.0
     max_concurrent: int = 1

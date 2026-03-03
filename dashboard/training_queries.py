@@ -29,6 +29,7 @@ def count_available_by_category(
     subcategory_ids: Optional[List[int]] = None,
     model_name: Optional[str] = None,
     difficulty_range: Optional[Tuple[float, float]] = None,
+    author_filter: Optional[str] = None,
 ) -> int:
     """Количество доступных вопросов по категориям."""
     where_parts = ["1=1"]
@@ -51,6 +52,10 @@ def count_available_by_category(
         where_parts.append("p.difficulty BETWEEN ? AND ?")
         params.extend(difficulty_range)
 
+    if author_filter:
+        where_parts.append("p.authors LIKE ?")
+        params.append(f"%{author_filter}%")
+
     where_sql = " AND ".join(where_parts)
     return conn.execute(f"""
         SELECT COUNT(DISTINCT qt.question_id)
@@ -66,16 +71,33 @@ def count_available_by_category(
 def count_available_random(
     conn: sqlite3.Connection,
     difficulty_range: Optional[Tuple[float, float]] = None,
+    author_filter: Optional[str] = None,
 ) -> int:
     """Количество доступных вопросов (все)."""
+    where_parts = ["1=1"]
+    params: list = []
+    need_pack_join = False
+
     if difficulty_range:
-        return conn.execute("""
-            SELECT COUNT(*)
-            FROM questions q
-            JOIN packs p ON q.pack_id = p.id
-            WHERE p.difficulty BETWEEN ? AND ?
-        """, difficulty_range).fetchone()[0]
-    return conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
+        where_parts.append("p.difficulty BETWEEN ? AND ?")
+        params.extend(difficulty_range)
+        need_pack_join = True
+
+    if author_filter:
+        where_parts.append("p.authors LIKE ?")
+        params.append(f"%{author_filter}%")
+        need_pack_join = True
+
+    if not need_pack_join:
+        return conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
+
+    where_sql = " AND ".join(where_parts)
+    return conn.execute(f"""
+        SELECT COUNT(*)
+        FROM questions q
+        JOIN packs p ON q.pack_id = p.id
+        WHERE {where_sql}
+    """, params).fetchone()[0]
 
 
 def count_available_gentleman(
@@ -114,6 +136,7 @@ def get_training_questions_by_category(
     difficulty_range: Optional[Tuple[float, float]] = None,
     limit: int = 10,
     seed: Optional[int] = None,
+    author_filter: Optional[str] = None,
 ) -> List[Dict]:
     """Случайные вопросы по категориям."""
     where_parts = ["1=1"]
@@ -135,6 +158,10 @@ def get_training_questions_by_category(
     if difficulty_range:
         where_parts.append("p.difficulty BETWEEN ? AND ?")
         params.extend(difficulty_range)
+
+    if author_filter:
+        where_parts.append("p.authors LIKE ?")
+        params.append(f"%{author_filter}%")
 
     where_sql = " AND ".join(where_parts)
     rows = conn.execute(f"""
@@ -209,14 +236,30 @@ def get_training_questions_random(
     difficulty_range: Optional[Tuple[float, float]] = None,
     limit: int = 10,
     seed: Optional[int] = None,
+    author_filter: Optional[str] = None,
 ) -> List[Dict]:
     """Случайные вопросы из всей базы."""
+    where_parts = ["1=1"]
+    params: list = []
+    need_pack_join = False
+
     if difficulty_range:
-        rows = conn.execute("""
+        where_parts.append("p.difficulty BETWEEN ? AND ?")
+        params.extend(difficulty_range)
+        need_pack_join = True
+
+    if author_filter:
+        where_parts.append("p.authors LIKE ?")
+        params.append(f"%{author_filter}%")
+        need_pack_join = True
+
+    if need_pack_join:
+        where_sql = " AND ".join(where_parts)
+        rows = conn.execute(f"""
             SELECT q.id FROM questions q
             JOIN packs p ON q.pack_id = p.id
-            WHERE p.difficulty BETWEEN ? AND ?
-        """, difficulty_range).fetchall()
+            WHERE {where_sql}
+        """, params).fetchall()
     else:
         rows = conn.execute("SELECT id FROM questions").fetchall()
 

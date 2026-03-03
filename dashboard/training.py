@@ -5,7 +5,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from dashboard.db_queries import get_all_categories, get_available_models
+from dashboard.db_queries import all_authors_sorted, get_all_categories, get_available_models
 from dashboard.training_queries import (
     count_available_by_category,
     count_available_gentleman,
@@ -91,6 +91,14 @@ def _render_config(conn, project_root: Path):
             st.warning("Данные джентльменского набора не найдены. Запустите `python scripts/analyze_answers.py`.")
             return
 
+    # --- Фильтр по автору (для По категории и Случайный микс) ---
+    author_filter = None
+    if mode != "Джентльменский набор":
+        author_list = ["Все авторы"] + all_authors_sorted(conn)
+        author_sel = st.selectbox("Автор пакета", author_list, key="train_author")
+        if author_sel != "Все авторы":
+            author_filter = author_sel
+
     # --- Общие настройки ---
     st.markdown("---")
     col1, col2 = st.columns(2)
@@ -111,11 +119,12 @@ def _render_config(conn, project_root: Path):
     if mode == "По категории":
         available = count_available_by_category(
             conn, category_ids, subcategory_ids, model_filter, difficulty_range,
+            author_filter,
         )
     elif mode == "Джентльменский набор":
         available = count_available_gentleman(data_dir, gentleman_cat)
     else:
-        available = count_available_random(conn, difficulty_range)
+        available = count_available_random(conn, difficulty_range, author_filter)
 
     st.info(f"Доступно вопросов: **{available:,}**")
 
@@ -133,7 +142,7 @@ def _render_config(conn, project_root: Path):
         if mode == "По категории":
             questions = get_training_questions_by_category(
                 conn, category_ids, subcategory_ids, model_filter,
-                difficulty_range, actual_count, seed,
+                difficulty_range, actual_count, seed, author_filter,
             )
         elif mode == "Джентльменский набор":
             questions = get_training_questions_gentleman(
@@ -142,7 +151,7 @@ def _render_config(conn, project_root: Path):
             )
         else:
             questions = get_training_questions_random(
-                conn, difficulty_range, actual_count, seed,
+                conn, difficulty_range, actual_count, seed, author_filter,
             )
 
         if not questions:

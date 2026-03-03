@@ -403,10 +403,31 @@ def top_authors(conn: sqlite3.Connection, limit: int = 20) -> List[Dict]:
             author_questions[author] += q_count
 
     sorted_authors = sorted(author_packs.items(), key=lambda x: x[1], reverse=True)
-    return [
+    result = [
         {"authors": author, "pack_count": packs, "question_count": author_questions[author]}
         for author, packs in sorted_authors[:limit]
     ]
+    return result
+
+
+def all_authors_sorted(conn: sqlite3.Connection) -> List[str]:
+    """Все авторы, отсортированные по количеству пакетов (убывание)."""
+    from collections import defaultdict
+
+    rows = conn.execute("""
+        SELECT p.authors, COUNT(*) AS pack_count
+        FROM packs p
+        WHERE p.authors IS NOT NULL AND p.authors != ''
+          AND p.parse_status = 'parsed'
+        GROUP BY p.authors
+    """).fetchall()
+
+    author_packs: dict = defaultdict(int)
+    for row in rows:
+        for author in [a.strip() for a in row["authors"].split(",") if a.strip()]:
+            author_packs[author] += row["pack_count"]
+
+    return [a for a, _ in sorted(author_packs.items(), key=lambda x: x[1], reverse=True)]
 
 
 def author_categories(

@@ -53,6 +53,7 @@ from dashboard.db_queries import (
     paired_categories,
     rare_subcategories,
     search_questions,
+    all_authors_sorted,
     top_authors,
     top_categories,
     top_subcategories,
@@ -405,8 +406,8 @@ elif page == "Авторы":
 
         st.markdown("---")
 
-        # Выбор автора для профиля
-        author_list = df_authors["authors"].tolist()
+        # Выбор автора для профиля (полный список, не только топ)
+        author_list = all_authors_sorted(conn)
         selected_author = st.selectbox("Выберите автора для тематического профиля", author_list)
 
         if selected_author:

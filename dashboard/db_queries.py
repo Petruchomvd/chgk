@@ -1,7 +1,8 @@
 """SQL-запросы для Streamlit-дашборда (с фильтрацией по модели)."""
 
+import json
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def get_available_models(conn: sqlite3.Connection) -> List[str]:
@@ -43,6 +44,16 @@ def _model_filter(alias: str, model_name: Optional[str]) -> tuple:
     if model_name:
         return f"AND {alias}.model_name = ?", (model_name,)
     return "", ()
+
+
+def _multi_author_filter(authors: List[str]) -> Tuple[str, tuple]:
+    """SQL-фрагмент для фильтрации по нескольким авторам (OR).
+
+    Returns: ("(p.authors LIKE ? OR p.authors LIKE ? ...)", ('%Author1%', ...))
+    """
+    clauses = ["p.authors LIKE ?" for _ in authors]
+    params = tuple(f"%{a}%" for a in authors)
+    return f"({' OR '.join(clauses)})", params
 
 
 def top_categories(conn: sqlite3.Connection, model_name: Optional[str] = None) -> List[Dict]:
@@ -312,10 +323,12 @@ def search_questions(
     category_id: Optional[int] = None,
     limit: int = 50,
     offset: int = 0,
+    author_filter: Optional[str] = None,
+    author_filters: Optional[List[str]] = None,
 ) -> List[Dict]:
     """Поиск вопросов с их классификациями."""
     where_parts = []
-    params = []
+    params: list = []
 
     if search_text:
         where_parts.append("q.text LIKE ?")
@@ -326,13 +339,20 @@ def search_questions(
     if category_id:
         where_parts.append("c.id = ?")
         params.append(category_id)
+    if author_filter:
+        where_parts.append("p.authors LIKE ?")
+        params.append(f"%{author_filter}%")
+    if author_filters:
+        sql_frag, author_params = _multi_author_filter(author_filters)
+        where_parts.append(sql_frag)
+        params.extend(author_params)
 
     where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
     return [dict(r) for r in conn.execute(f"""
         SELECT q.id, q.text, q.answer, q.comment,
                p.title AS pack_title, p.difficulty AS pack_difficulty,
-               q.difficulty AS question_difficulty,
+               q.difficulty AS question_difficulty, p.authors AS pack_authors,
                c.name_ru AS category, s.name_ru AS subcategory,
                qt.confidence, qt.model_name
         FROM questions q
@@ -351,10 +371,12 @@ def count_search_results(
     model_name: Optional[str] = None,
     search_text: str = "",
     category_id: Optional[int] = None,
+    author_filter: Optional[str] = None,
+    author_filters: Optional[List[str]] = None,
 ) -> int:
     """Количество результатов для пагинации."""
     where_parts = []
-    params = []
+    params: list = []
 
     if search_text:
         where_parts.append("q.text LIKE ?")
@@ -365,6 +387,13 @@ def count_search_results(
     if category_id:
         where_parts.append("c.id = ?")
         params.append(category_id)
+    if author_filter:
+        where_parts.append("p.authors LIKE ?")
+        params.append(f"%{author_filter}%")
+    if author_filters:
+        sql_frag, author_params = _multi_author_filter(author_filters)
+        where_parts.append(sql_frag)
+        params.extend(author_params)
 
     where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
@@ -374,6 +403,7 @@ def count_search_results(
         LEFT JOIN question_topics qt ON q.id = qt.question_id
         LEFT JOIN subcategories s ON qt.subcategory_id = s.id
         LEFT JOIN categories c ON s.category_id = c.id
+        LEFT JOIN packs p ON q.pack_id = p.id
         {where_sql}
     """, params).fetchone()[0]
 
@@ -618,3 +648,74 @@ def get_questions_by_ids(
         WHERE q.id IN ({placeholders})
         ORDER BY q.id
     """, ids).fetchall()]
+
+
+# ─── Турнирные запросы ───────────────────────────────────────────
+
+def tournament_per_author_stats(
+    conn: sqlite3.Connection,
+    authors: List[str],
+    model_name: Optional[str] = None,
+) -> List[Dict]:
+    """Статистика по каждому автору: вопросов, классифицировано, %."""
+    where_model, model_params = _model_filter("qt", model_name)
+    results = []
+    for author in authors:
+        total = conn.execute("""
+            SELECT COUNT(DISTINCT q.id)
+            FROM questions q
+            JOIN packs p ON q.pack_id = p.id
+            WHERE p.authors LIKE ?
+        """, (f"%{author}%",)).fetchone()[0]
+
+        classified = conn.execute(f"""
+            SELECT COUNT(DISTINCT qt.question_id)
+            FROM question_topics qt
+            JOIN questions q ON qt.question_id = q.id
+            JOIN packs p ON q.pack_id = p.id
+            WHERE p.authors LIKE ? {where_model}
+        """, (f"%{author}%",) + model_params).fetchone()[0]
+
+        results.append({
+            "author": author,
+            "total": total,
+            "classified": classified,
+            "pct": round(100 * classified / total, 1) if total > 0 else 0,
+        })
+    results.sort(key=lambda x: x["total"], reverse=True)
+    return results
+
+
+def tournament_combined_categories(
+    conn: sqlite3.Connection,
+    authors: List[str],
+    model_name: Optional[str] = None,
+) -> List[Dict]:
+    """Совместное распределение по категориям для группы авторов."""
+    author_sql, author_params = _multi_author_filter(authors)
+    where_model, model_params = _model_filter("qt", model_name)
+
+    rows = conn.execute(f"""
+        SELECT c.name_ru AS category, c.sort_order,
+               COUNT(DISTINCT qt.question_id) AS count
+        FROM question_topics qt
+        JOIN questions q ON qt.question_id = q.id
+        JOIN packs p ON q.pack_id = p.id
+        JOIN subcategories s ON qt.subcategory_id = s.id
+        JOIN categories c ON s.category_id = c.id
+        WHERE {author_sql} {where_model}
+        GROUP BY c.id
+        ORDER BY c.sort_order
+    """, author_params + model_params).fetchall()
+
+    total = sum(r["count"] for r in rows) if rows else 1
+    return [{**dict(r), "pct": round(100 * r["count"] / total, 1)} for r in rows]
+
+
+def _parse_author_names(authors_json: str) -> List[str]:
+    """Извлечь имена авторов из JSON-строки поля packs.authors."""
+    try:
+        alist = json.loads(authors_json)
+        return [a["name"] for a in alist if "name" in a]
+    except (json.JSONDecodeError, TypeError):
+        return [a.strip() for a in authors_json.split(",") if a.strip()]

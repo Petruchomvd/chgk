@@ -23,6 +23,13 @@ def get_subcategories_for_categories(
     """, category_ids).fetchall()]
 
 
+def _multi_author_clause(author_filters: List[str]) -> Tuple[str, list]:
+    """OR-clause для нескольких авторов."""
+    clauses = ["p.authors LIKE ?" for _ in author_filters]
+    params = [f"%{a}%" for a in author_filters]
+    return f"({' OR '.join(clauses)})", params
+
+
 def count_available_by_category(
     conn: sqlite3.Connection,
     category_ids: Optional[List[int]] = None,
@@ -30,6 +37,7 @@ def count_available_by_category(
     model_name: Optional[str] = None,
     difficulty_range: Optional[Tuple[float, float]] = None,
     author_filter: Optional[str] = None,
+    author_filters: Optional[List[str]] = None,
 ) -> int:
     """Количество доступных вопросов по категориям."""
     where_parts = ["1=1"]
@@ -55,6 +63,10 @@ def count_available_by_category(
     if author_filter:
         where_parts.append("p.authors LIKE ?")
         params.append(f"%{author_filter}%")
+    if author_filters:
+        sql_frag, ap = _multi_author_clause(author_filters)
+        where_parts.append(sql_frag)
+        params.extend(ap)
 
     where_sql = " AND ".join(where_parts)
     return conn.execute(f"""
@@ -72,6 +84,7 @@ def count_available_random(
     conn: sqlite3.Connection,
     difficulty_range: Optional[Tuple[float, float]] = None,
     author_filter: Optional[str] = None,
+    author_filters: Optional[List[str]] = None,
 ) -> int:
     """Количество доступных вопросов (все)."""
     where_parts = ["1=1"]
@@ -86,6 +99,12 @@ def count_available_random(
     if author_filter:
         where_parts.append("p.authors LIKE ?")
         params.append(f"%{author_filter}%")
+        need_pack_join = True
+
+    if author_filters:
+        sql_frag, ap = _multi_author_clause(author_filters)
+        where_parts.append(sql_frag)
+        params.extend(ap)
         need_pack_join = True
 
     if not need_pack_join:
@@ -137,6 +156,7 @@ def get_training_questions_by_category(
     limit: int = 10,
     seed: Optional[int] = None,
     author_filter: Optional[str] = None,
+    author_filters: Optional[List[str]] = None,
 ) -> List[Dict]:
     """Случайные вопросы по категориям."""
     where_parts = ["1=1"]
@@ -162,6 +182,10 @@ def get_training_questions_by_category(
     if author_filter:
         where_parts.append("p.authors LIKE ?")
         params.append(f"%{author_filter}%")
+    if author_filters:
+        sql_frag, ap = _multi_author_clause(author_filters)
+        where_parts.append(sql_frag)
+        params.extend(ap)
 
     where_sql = " AND ".join(where_parts)
     rows = conn.execute(f"""
@@ -237,6 +261,7 @@ def get_training_questions_random(
     limit: int = 10,
     seed: Optional[int] = None,
     author_filter: Optional[str] = None,
+    author_filters: Optional[List[str]] = None,
 ) -> List[Dict]:
     """Случайные вопросы из всей базы."""
     where_parts = ["1=1"]
@@ -251,6 +276,12 @@ def get_training_questions_random(
     if author_filter:
         where_parts.append("p.authors LIKE ?")
         params.append(f"%{author_filter}%")
+        need_pack_join = True
+
+    if author_filters:
+        sql_frag, ap = _multi_author_clause(author_filters)
+        where_parts.append(sql_frag)
+        params.extend(ap)
         need_pack_join = True
 
     if need_pack_join:

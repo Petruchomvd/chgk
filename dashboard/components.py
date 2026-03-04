@@ -326,6 +326,45 @@ def author_radar_chart(data: list, author: str) -> go.Figure:
     return fig
 
 
+def comparison_bar_chart(
+    tournament_data: list,
+    global_data: list,
+    tournament_label: str = "Турнир",
+    global_label: str = "Глобально",
+) -> go.Figure:
+    """Grouped horizontal bar chart: турнир vs глобальное распределение (%)."""
+    categories = _RADAR_CATEGORY_ORDER
+
+    t_pct = {d["category"]: d["pct"] for d in tournament_data}
+    g_pct = {d["category"]: d["pct"] for d in global_data}
+
+    cats = list(reversed(categories))
+    t_vals = [t_pct.get(c, 0) for c in cats]
+    g_vals = [g_pct.get(c, 0) for c in cats]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=cats, x=t_vals, orientation="h",
+        name=tournament_label, marker_color="#e6194b",
+        text=[f"{v:.1f}%" for v in t_vals], textposition="outside",
+    ))
+    fig.add_trace(go.Bar(
+        y=cats, x=g_vals, orientation="h",
+        name=global_label, marker_color="#4363d8",
+        text=[f"{v:.1f}%" for v in g_vals], textposition="outside",
+    ))
+    fig.update_layout(
+        **_LAYOUT,
+        barmode="group",
+        title="Распределение по категориям: турнир vs глобально",
+        xaxis_title="Доля (%)",
+        yaxis_title="",
+        height=500,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    return fig
+
+
 def cohens_kappa(matrix: np.ndarray) -> float:
     """Cohen's Kappa из confusion-матрицы."""
     n = matrix.sum()

@@ -164,7 +164,7 @@ def _normalize_gentleman_categories(raw_categories: dict) -> dict[str, list[list
 
 st.sidebar.title("ЧГК Анализ")
 
-SECTIONS = ["Обзор", "Аналитика", "Тренировка"]
+SECTIONS = ["Обзор", "Аналитика", "Тренировка", "Турнир IQ ПФО"]
 section = st.sidebar.radio("Раздел", SECTIONS, label_visibility="collapsed")
 
 ANALYTICS_PAGES = [
@@ -629,9 +629,11 @@ elif page == "Уверенность":
 elif page == "Вопросы":
     st.header("Браузер вопросов")
 
-    col_search, col_cat_filter = st.columns([3, 1])
+    col_search, col_author, col_cat_filter = st.columns([2, 1, 1])
     with col_search:
         search_text = st.text_input("Поиск по тексту вопроса", placeholder="Введите ключевое слово...")
+    with col_author:
+        author_search = st.text_input("Автор", placeholder="Имя автора...", key="q_author_filter")
     with col_cat_filter:
         all_cats_list = get_all_categories(conn)
         cat_filter_options = ["Все"] + [c["name_ru"] for c in all_cats_list]
@@ -641,8 +643,13 @@ elif page == "Вопросы":
     if cat_filter_selected != "Все":
         cat_id_filter = next(c["id"] for c in all_cats_list if c["name_ru"] == cat_filter_selected)
 
+    author_filter_val = author_search.strip() if author_search else None
+
     PAGE_SIZE = 30
-    total_results = count_search_results(conn, model_filter, search_text, cat_id_filter)
+    total_results = count_search_results(
+        conn, model_filter, search_text, cat_id_filter,
+        author_filter=author_filter_val,
+    )
     total_pages = max(1, (total_results + PAGE_SIZE - 1) // PAGE_SIZE)
 
     page = st.number_input("Страница", min_value=1, max_value=total_pages, value=1, step=1)
@@ -653,6 +660,7 @@ elif page == "Вопросы":
     questions = search_questions(
         conn, model_filter, search_text, cat_id_filter,
         limit=PAGE_SIZE, offset=offset,
+        author_filter=author_filter_val,
     )
 
     if questions:
@@ -967,3 +975,7 @@ elif page == "Джентльменский набор":
 elif page == "Тренировка":
     from dashboard.training import render_training_page
     render_training_page(conn, PROJECT_ROOT)
+
+elif page == "Турнир IQ ПФО":
+    from dashboard.tournament import render_tournament_page
+    render_tournament_page(conn, model_filter, PROJECT_ROOT)

@@ -215,6 +215,94 @@ def agreement_matrix(conn: sqlite3.Connection, model_a: str, model_b: str) -> Li
     ]
 
 
+def get_comparison_questions(
+    conn: sqlite3.Connection,
+    model_a: str,
+    model_b: str,
+    filter_mode: str = "all",
+    search_text: str = "",
+    category_filter: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> tuple:
+    """Вопросы с классификациями обеих моделей, с пагинацией.
+
+    filter_mode: "all" | "agree" | "disagree"
+    Returns: (list of dicts, total_count)
+    """
+    base_cte = """
+        WITH ranked AS (
+            SELECT qt.question_id, qt.model_name,
+                   c.id AS cat_id, c.name_ru AS category,
+                   s.name_ru AS subcategory,
+                   qt.confidence,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY qt.question_id, qt.model_name
+                       ORDER BY qt.confidence DESC
+                   ) AS rn
+            FROM question_topics qt
+            JOIN subcategories s ON qt.subcategory_id = s.id
+            JOIN categories c ON s.category_id = c.id
+            WHERE qt.model_name IN (?, ?)
+        ),
+        compared AS (
+            SELECT
+                a.question_id,
+                a.cat_id AS cat_id_a, a.category AS cat_a, a.subcategory AS sub_a, a.confidence AS conf_a,
+                b.cat_id AS cat_id_b, b.category AS cat_b, b.subcategory AS sub_b, b.confidence AS conf_b
+            FROM ranked a
+            JOIN ranked b ON a.question_id = b.question_id
+            WHERE a.model_name = ? AND a.rn = 1
+              AND b.model_name = ? AND b.rn = 1
+        )
+    """
+    base_params = [model_a, model_b, model_a, model_b]
+
+    where_parts = []
+    extra_params = []
+
+    if filter_mode == "agree":
+        where_parts.append("cmp.cat_id_a = cmp.cat_id_b")
+    elif filter_mode == "disagree":
+        where_parts.append("cmp.cat_id_a != cmp.cat_id_b")
+
+    if search_text:
+        where_parts.append("q.text LIKE ?")
+        extra_params.append(f"%{search_text}%")
+
+    if category_filter:
+        where_parts.append("(cmp.cat_a = ? OR cmp.cat_b = ?)")
+        extra_params.extend([category_filter, category_filter])
+
+    where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+
+    # Count
+    count_sql = f"""
+        {base_cte}
+        SELECT COUNT(*) AS cnt
+        FROM compared cmp
+        JOIN questions q ON q.id = cmp.question_id
+        {where_sql}
+    """
+    total = conn.execute(count_sql, base_params + extra_params).fetchone()["cnt"]
+
+    # Data
+    data_sql = f"""
+        {base_cte}
+        SELECT cmp.*, q.text, q.answer
+        FROM compared cmp
+        JOIN questions q ON q.id = cmp.question_id
+        {where_sql}
+        ORDER BY cmp.question_id
+        LIMIT ? OFFSET ?
+    """
+    rows = [dict(r) for r in conn.execute(
+        data_sql, base_params + extra_params + [limit, offset]
+    ).fetchall()]
+
+    return rows, total
+
+
 # ─── Браузер вопросов ─────────────────────────────────────────────
 
 def search_questions(

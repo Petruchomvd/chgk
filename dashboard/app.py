@@ -48,6 +48,7 @@ from dashboard.db_queries import (
     get_available_models,
     get_classification_runs,
     get_common_questions,
+    get_comparison_questions,
     get_overview_stats,
     get_questions_by_ids,
     paired_categories,
@@ -499,35 +500,89 @@ elif page == "Сравнение моделей":
                     use_container_width=True,
                 )
 
-                # Таблица разногласий
-                disagreements = df_common[df_common["cat_id_a"] != df_common["cat_id_b"]].copy()
-                if not disagreements.empty:
-                    with st.expander(f"Разногласия ({len(disagreements)} вопросов)"):
-                        # Подтянуть текст вопроса
-                        q_ids = disagreements["question_id"].tolist()
-                        placeholders = ",".join("?" * len(q_ids))
-                        q_rows = conn.execute(
-                            f"SELECT id, substr(text, 1, 120) AS text_short FROM questions WHERE id IN ({placeholders})",
-                            q_ids,
-                        ).fetchall()
-                        q_texts = {r["id"]: r["text_short"] for r in q_rows}
-                        disagreements["text"] = disagreements["question_id"].map(q_texts)
+                # ── Браузер вопросов с классификациями ──
+                st.subheader("Вопросы и классификации")
 
-                        st.dataframe(
-                            disagreements[["question_id", "text", "cat_a", "conf_a", "cat_b", "conf_b"]].rename(
-                                columns={
-                                    "question_id": "ID",
-                                    "text": "Вопрос",
-                                    "cat_a": model_a,
-                                    "conf_a": f"Увер. {model_a[:10]}",
-                                    "cat_b": model_b,
-                                    "conf_b": f"Увер. {model_b[:10]}",
-                                }
-                            ),
-                            use_container_width=True,
-                            hide_index=True,
-                            height=400,
-                        )
+                col_filter, col_cat, col_search = st.columns([1, 1, 2])
+                with col_filter:
+                    filter_labels = {"all": "Все", "agree": "Совпадают", "disagree": "Расходятся"}
+                    cmp_filter = st.selectbox(
+                        "Фильтр",
+                        list(filter_labels.keys()),
+                        format_func=lambda x: filter_labels[x],
+                        key="cmp_filter",
+                    )
+                with col_cat:
+                    all_cats = get_all_categories(conn)
+                    cat_options = ["Все"] + [c["name_ru"] for c in all_cats]
+                    cmp_cat = st.selectbox("Категория", cat_options, key="cmp_cat_filter")
+                with col_search:
+                    cmp_search = st.text_input("Поиск", placeholder="По тексту вопроса...", key="cmp_search")
+
+                CMP_PAGE_SIZE = 20
+                cat_name = cmp_cat if cmp_cat != "Все" else None
+
+                cmp_questions, cmp_total = get_comparison_questions(
+                    conn, model_a, model_b,
+                    filter_mode=cmp_filter,
+                    search_text=cmp_search,
+                    category_filter=cat_name,
+                    limit=CMP_PAGE_SIZE, offset=0,
+                )
+
+                # Пагинация
+                cmp_total_pages = max(1, (cmp_total + CMP_PAGE_SIZE - 1) // CMP_PAGE_SIZE)
+                cmp_page_num = st.number_input(
+                    "Страница", min_value=1, max_value=cmp_total_pages,
+                    value=1, step=1, key="cmp_page",
+                )
+                cmp_offset = (cmp_page_num - 1) * CMP_PAGE_SIZE
+
+                if cmp_offset > 0:
+                    cmp_questions, cmp_total = get_comparison_questions(
+                        conn, model_a, model_b,
+                        filter_mode=cmp_filter,
+                        search_text=cmp_search,
+                        category_filter=cat_name,
+                        limit=CMP_PAGE_SIZE, offset=cmp_offset,
+                    )
+
+                disagree_count = (df_common["cat_id_a"] != df_common["cat_id_b"]).sum()
+                agree_count = total_common - disagree_count
+                st.caption(
+                    f"Всего: {cmp_total} | "
+                    f"Совпадают: {agree_count} | Расходятся: {disagree_count} | "
+                    f"Страница {cmp_page_num} из {cmp_total_pages}"
+                )
+
+                for q in cmp_questions:
+                    is_agree = q["cat_id_a"] == q["cat_id_b"]
+                    icon = "✅" if is_agree else "❌"
+
+                    text_preview = (q["text"] or "")[:120]
+                    if len(q["text"] or "") > 120:
+                        text_preview += "..."
+
+                    header = f"{icon} **#{q['question_id']}** — {text_preview}"
+
+                    with st.expander(header):
+                        st.markdown(f"**Вопрос:** {q['text']}")
+                        st.markdown(f"**Ответ:** {q['answer']}")
+                        st.markdown("---")
+                        ca, cb = st.columns(2)
+                        with ca:
+                            st.markdown(f"**{model_a}**")
+                            st.markdown(f"Категория: **{q['cat_a']}**")
+                            st.markdown(f"Подкатегория: {q['sub_a']}")
+                            st.markdown(f"Уверенность: {q['conf_a']:.0%}")
+                        with cb:
+                            st.markdown(f"**{model_b}**")
+                            st.markdown(f"Категория: **{q['cat_b']}**")
+                            st.markdown(f"Подкатегория: {q['sub_b']}")
+                            st.markdown(f"Уверенность: {q['conf_b']:.0%}")
+
+                if not cmp_questions:
+                    st.info("Нет вопросов по выбранным фильтрам.")
 
 
 # ═══════════════ Уверенность ═══════════════════════════════════════

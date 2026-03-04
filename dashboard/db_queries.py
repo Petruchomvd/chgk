@@ -289,7 +289,7 @@ def get_comparison_questions(
     # Data
     data_sql = f"""
         {base_cte}
-        SELECT cmp.*, q.text, q.answer
+        SELECT cmp.*, q.text, q.answer, q.comment
         FROM compared cmp
         JOIN questions q ON q.id = cmp.question_id
         {where_sql}

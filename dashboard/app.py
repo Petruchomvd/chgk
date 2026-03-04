@@ -568,6 +568,8 @@ elif page == "Сравнение моделей":
                     with st.expander(header):
                         st.markdown(f"**Вопрос:** {q['text']}")
                         st.markdown(f"**Ответ:** {q['answer']}")
+                        if q.get("comment"):
+                            st.markdown(f"**Комментарий:** {q['comment']}")
                         st.markdown("---")
                         ca, cb = st.columns(2)
                         with ca:

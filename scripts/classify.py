@@ -97,6 +97,13 @@ def main():
         default=None,
         help="Фильтр по автору пакета (подстрока, напр. 'Рождествин')",
     )
+    parser.add_argument(
+        "--compare-with",
+        type=str,
+        default=None,
+        dest="compare_with",
+        help="Классифицировать только вопросы, уже обработанные этой моделью (для сравнения)",
+    )
     # Legacy-параметры (обратная совместимость)
     parser.add_argument("--groq", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--groq-key", type=str, default=None, help=argparse.SUPPRESS)
@@ -161,6 +168,7 @@ def main():
         use_dashboard=not args.no_dashboard,
         workers=args.workers,
         author_filter=args.author,
+        source_model=args.compare_with,
     )
 
 

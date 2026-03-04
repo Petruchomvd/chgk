@@ -20,6 +20,7 @@ _PROVIDER_CLASSES = {
     "openai": "classifier.providers.openai_provider:OpenAIProvider",
     "anthropic": "classifier.providers.anthropic_provider:AnthropicProvider",
     "google": "classifier.providers.google_provider:GoogleProvider",
+    "openrouter": "classifier.providers.openai_provider:OpenAIProvider",
 }
 
 # Пресеты по умолчанию для каждого провайдера
@@ -68,6 +69,16 @@ PROVIDER_PRESETS = {
         "rate_limit_delay": 0.0,
         "env_key": "GOOGLE_API_KEY",
         "supports_json_mode": True,
+    },
+    "openrouter": {
+        "default_model": "google/gemini-2.5-flash",
+        "cost_per_1m_input": 0.15,
+        "cost_per_1m_output": 0.60,
+        "max_concurrent": 5,
+        "rate_limit_delay": 0.0,
+        "env_key": "OPENROUTER_API_KEY",
+        "supports_json_mode": True,
+        "base_url": "https://openrouter.ai/api/v1",
     },
 }
 
@@ -124,6 +135,7 @@ def create_provider(
         model=model or preset["default_model"],
         api_key=api_keys[0] if api_keys else "",
         api_keys=api_keys,
+        base_url=preset.get("base_url", ""),
         rate_limit_delay=preset["rate_limit_delay"],
         max_concurrent=preset["max_concurrent"],
         temperature=temperature,

@@ -185,6 +185,7 @@ def get_unclassified_questions(
     model_name: Optional[str] = None,
     random_order: bool = True,
     author_filter: Optional[str] = None,
+    source_model: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Получить вопросы для классификации.
 
@@ -192,11 +193,18 @@ def get_unclassified_questions(
     random_order=True — случайный порядок (равномерное покрытие пакетов).
     random_order=False — по ID (для детерминистичного сравнения моделей).
     author_filter — фильтр по имени автора пакета (LIKE '%<author_filter>%').
+    source_model — только вопросы, уже классифицированные этой моделью (для сравнения).
     """
     order = "RANDOM()" if random_order else "q.id"
 
     author_join = "JOIN packs p ON q.pack_id = p.id" if author_filter else ""
     author_where = "AND p.authors LIKE ?" if author_filter else ""
+
+    # Фильтр по source_model: берём только вопросы, которые уже классифицировал source_model
+    source_where = (
+        "AND q.id IN (SELECT DISTINCT question_id FROM question_topics WHERE model_name = ?)"
+        if source_model else ""
+    )
 
     if model_name:
         sql = f"""
@@ -206,6 +214,7 @@ def get_unclassified_questions(
             WHERE q.id NOT IN (
                 SELECT DISTINCT question_id FROM question_topics WHERE model_name = ?
             )
+            {source_where}
             {author_where}
             ORDER BY {order}
         """
@@ -218,11 +227,14 @@ def get_unclassified_questions(
             WHERE q.id NOT IN (
                 SELECT DISTINCT question_id FROM question_topics
             )
+            {source_where}
             {author_where}
             ORDER BY {order}
         """
         params = []
 
+    if source_model:
+        params.append(source_model)
     if author_filter:
         params.append(f"%{author_filter}%")
 

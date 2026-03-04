@@ -102,6 +102,7 @@ def run_classification(
     provider=None,
     workers: int = 1,
     author_filter: str = None,
+    source_model: str = None,
 ):
     """Главный цикл классификации.
 
@@ -131,7 +132,8 @@ def run_classification(
 
     # Получаем неклассифицированные вопросы ДЛЯ КОНКРЕТНОЙ МОДЕЛИ
     questions = get_unclassified_questions(
-        conn, limit=limit, model_name=model_name, author_filter=author_filter
+        conn, limit=limit, model_name=model_name,
+        author_filter=author_filter, source_model=source_model,
     )
     total = len(questions)
     total_in_db = get_question_count(conn)
@@ -183,6 +185,8 @@ def run_classification(
         print(f"  Модель:    {CYAN}{model_name}{RESET}")
         print(f"  Режим:     {mode_str}{workers_str}")
         print(f"  Вопросов:  {BOLD}{total}{RESET} из {total_in_db} (в БД)")
+        if source_model:
+            print(f"  Сравнение: {CYAN}{source_model}{RESET}")
         if author_filter:
             print(f"  Автор:     {CYAN}{author_filter}{RESET}")
         print(f"  Прогноз:   {cost_str}")

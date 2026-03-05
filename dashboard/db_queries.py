@@ -721,3 +721,39 @@ def _parse_author_names(authors_json: str) -> List[str]:
         return [a["name"] for a in alist if "name" in a]
     except (json.JSONDecodeError, TypeError):
         return [a.strip() for a in authors_json.split(",") if a.strip()]
+
+
+def tournament_top_answers(
+    conn: sqlite3.Connection,
+    authors: List[str],
+    min_freq: int = 2,
+    top_n: int = 100,
+) -> List[Dict]:
+    """Частые ответы в вопросах авторов турнира.
+
+    Returns:
+        [{"answer": "пушкин", "display": "Пушкин", "count": 5}, ...]
+    """
+    author_clause, author_params = _multi_author_filter(authors)
+    rows = conn.execute(f"""
+        SELECT LOWER(TRIM(q.answer)) AS answer_key,
+               q.answer AS sample_answer,
+               COUNT(*) AS cnt
+        FROM questions q
+        JOIN packs p ON q.pack_id = p.id
+        WHERE {author_clause}
+          AND q.answer IS NOT NULL AND TRIM(q.answer) != ''
+        GROUP BY answer_key
+        HAVING cnt >= ?
+        ORDER BY cnt DESC
+        LIMIT ?
+    """, author_params + (min_freq, top_n)).fetchall()
+
+    result = []
+    for r in rows:
+        result.append({
+            "answer": r["answer_key"],
+            "display": r["sample_answer"].strip(),
+            "count": r["cnt"],
+        })
+    return result

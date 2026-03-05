@@ -23,6 +23,7 @@ from dashboard.db_queries import (
     top_categories,
     tournament_combined_categories,
     tournament_per_author_stats,
+    tournament_top_answers,
 )
 from dashboard.training_queries import (
     count_available_by_category,
@@ -496,14 +497,101 @@ def _tab_questions(conn, model_filter):
 
 
 # ══════════════════════════════════════════════════════════════════
+#  Таб 6: Джентльменский набор
+# ══════════════════════════════════════════════════════════════════
+
+def _tab_gentleman(conn, project_root: Path):
+    import json
+
+    st.subheader("Джентльменский набор авторов турнира")
+    st.caption("Частые ответы в вопросах авторов IQ ПФО + описания из Wikipedia")
+
+    data_dir = project_root / "data" / "gentleman_set"
+
+    # Загрузить категории ответов (если есть)
+    answer_category = {}
+    categorized_path = data_dir / "categorized_answers.json"
+    if categorized_path.exists():
+        cat_data = json.loads(categorized_path.read_text(encoding="utf-8"))
+        answer_category = cat_data.get("answer_category", {})
+
+    # Загрузить описания из Wikipedia (если есть)
+    enriched = {}
+    enriched_path = data_dir / "enriched_entities.json"
+    if enriched_path.exists():
+        enriched_raw = json.loads(enriched_path.read_text(encoding="utf-8"))
+        enriched = enriched_raw.get("entities", {})
+
+    # Загрузить глобальные частоты
+    global_freq = {}
+    top_path = data_dir / "top_answers.json"
+    if top_path.exists():
+        top_data = json.loads(top_path.read_text(encoding="utf-8"))
+        global_freq = dict(top_data.get("top_answers", []))
+
+    # Фильтры
+    col_freq, col_cat = st.columns([1, 1])
+    with col_freq:
+        min_freq = st.slider("Мин. частота (в турнире)", 1, 10, 2, key="tg_min_freq")
+    with col_cat:
+        cat_filter_options = ["Все", "Люди", "Места", "Произведения", "Наука", "Выражения", "Числа"]
+        cat_filter = st.selectbox("Категория", cat_filter_options, key="tg_cat_filter")
+
+    # Получить турнирные ответы из БД
+    answers = tournament_top_answers(conn, IQ_PFO_AUTHORS, min_freq=min_freq, top_n=200)
+
+    if not answers:
+        st.info("Нет часто повторяющихся ответов у авторов турнира")
+        return
+
+    # Собрать таблицу
+    rows = []
+    for a in answers:
+        key = a["answer"]
+        category = answer_category.get(key, "—")
+
+        # Фильтр по категории
+        if cat_filter != "Все" and category != cat_filter:
+            continue
+
+        ent = enriched.get(key, {})
+        description = ent.get("short_description", "")
+        global_cnt = global_freq.get(key, 0)
+
+        rows.append({
+            "Ответ": a["display"],
+            "Турнир": a["count"],
+            "Глобально": global_cnt,
+            "Категория": category,
+            "Описание": description,
+        })
+
+    if not rows:
+        st.info("Нет ответов с выбранными фильтрами")
+        return
+
+    df = pd.DataFrame(rows)
+
+    st.metric("Уникальных ответов", len(df))
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Описание": st.column_config.TextColumn(width="large"),
+        },
+    )
+
+
+# ══════════════════════════════════════════════════════════════════
 #  Главная точка входа
 # ══════════════════════════════════════════════════════════════════
 
 def render_tournament_page(conn, model_filter, project_root: Path):
     st.header(f"Турнир {TOURNAMENT_NAME} — Саранск")
 
-    tab_overview, tab_profiles, tab_compare, tab_train, tab_questions = st.tabs([
-        "Обзор", "Профили авторов", "Сравнение", "Тренировка", "Вопросы",
+    tab_overview, tab_profiles, tab_compare, tab_train, tab_questions, tab_gentleman = st.tabs([
+        "Обзор", "Профили авторов", "Сравнение", "Тренировка", "Вопросы", "Джентльменский набор",
     ])
 
     with tab_overview:
@@ -516,3 +604,5 @@ def render_tournament_page(conn, model_filter, project_root: Path):
         _tab_training(conn)
     with tab_questions:
         _tab_questions(conn, model_filter)
+    with tab_gentleman:
+        _tab_gentleman(conn, project_root)

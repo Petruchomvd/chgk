@@ -737,7 +737,8 @@ elif page == "Джентльменский набор":
     top_n = st.slider("Показать топ-N", 10, 100, 30)
 
     def _show_tab(data_list, name_label, count_label, title, color,
-                  entity_questions, display_forms=None, pack_counts=None):
+                  entity_questions, display_forms=None, pack_counts=None,
+                  enriched_data=None):
         """Отобразить вкладку с графиком, таблицей и drill-down."""
         filtered = [(name, cnt) for name, cnt in data_list if cnt >= min_freq]
         if not filtered:
@@ -750,13 +751,20 @@ elif page == "Джентльменский набор":
         else:
             display_data = filtered
 
-        # Собрать DataFrame с опциональной колонкой "Пакетов"
+        # Собрать DataFrame с опциональной колонкой "Пакетов" и "Описание"
         if pack_counts:
             rows = []
             for (name, cnt), (orig_name, _) in zip(display_data, filtered):
                 packs = pack_counts.get(orig_name, 0)
-                rows.append((name, cnt, packs))
-            df = pd.DataFrame(rows, columns=[name_label, count_label, "Пакетов"])
+                row = [name, cnt, packs]
+                if enriched_data:
+                    ent = enriched_data.get(orig_name, {})
+                    row.append(ent.get("short_description", ""))
+                rows.append(row)
+            cols = [name_label, count_label, "Пакетов"]
+            if enriched_data:
+                cols.append("Описание")
+            df = pd.DataFrame(rows, columns=cols)
         else:
             df = pd.DataFrame(display_data, columns=[name_label, count_label])
 
@@ -873,6 +881,13 @@ elif page == "Джентльменский набор":
             raw_categories = cat_data.get("categories", {})
             categories = _normalize_gentleman_categories(raw_categories)
 
+            # Загрузить описания из Wikipedia (если есть)
+            enriched_path = data_dir / "enriched_entities.json"
+            enriched_data = None
+            if enriched_path.exists():
+                enriched_raw = json.loads(enriched_path.read_text(encoding="utf-8"))
+                enriched_data = enriched_raw.get("entities", {})
+
             cat_cols = st.columns(len(GENTLEMAN_CATEGORY_ORDER))
             for col, cat_name in zip(cat_cols, GENTLEMAN_CATEGORY_ORDER):
                 items = categories.get(cat_name, [])
@@ -892,6 +907,7 @@ elif page == "Джентльменский набор":
                             f"Топ: {cat_name}", color,
                             answer_questions, display_forms,
                             pack_counts=pack_counts,
+                            enriched_data=enriched_data,
                         )
 
         elif view == "Все ответы":

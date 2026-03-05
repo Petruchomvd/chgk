@@ -1,0 +1,1911 @@
+{
+  "generated_at": "2026-03-06T00:43:23.938108",
+  "model": "qwen/qwen-2.5-72b-instruct",
+  "total_entities": 268,
+  "entity_themes": {
+    "пушкин": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "прометей": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "иисус христос": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "ной": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "санта-клаус": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "икар": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "сизиф": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "нарцисс": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "карлсон": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "шалтай-болтай": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "феникс": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "винсент ван гог": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "гарри гудини": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "барби": {
+      "category_num": 12,
+      "category": "Быт и повседневность",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "венера": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "чехов": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "сфинкс": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "пиноккио": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "чебурашка": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "эдип": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "герострат": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "агата кристи": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "казимир малевич": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "мидас": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "джокер": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "дракула": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "льюис кэрролл": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "давид": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "квазимодо": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "рене магритт": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "юрий гагарин": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "пеле": {
+      "category_num": 8,
+      "category": "Спорт",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "нил армстронг": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "фредди меркьюри": {
+      "category_num": 6,
+      "category": "Музыка",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "папа римский": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "мартин лютер": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "даль": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "наполеон": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "шерлок холмс": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "жюль верн": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "понтий пилат": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "леонардо да винчи": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "робин гуд": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "данте алигьери": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "спиритический сеанс": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "ленин": {
+      "category_num": 11,
+      "category": "Общество и политика",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "харон": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "майкл джексон": {
+      "category_num": 6,
+      "category": "Музыка",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "редьярд киплинг": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "фигаро": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "русалка": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "адольф гитлер": {
+      "category_num": 11,
+      "category": "Общество и политика",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "франкенштейн": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "джоан роулинг": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "терри пратчетт": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "нерон": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "марсель дюшан": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "белая ворона": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "тантал": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "геракл": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "ева": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "иоганн гутенберг": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "гагарин": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "человек-паук": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "офелия": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "одиссей": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "антуан де сент-экзюпери": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "а.с": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "хорхе луис борхес": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "райт": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "альфред хичкок": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "дед мороз": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "галилео галилей": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "александр македонский": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "максим горький": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "прокруст": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "джузеппе арчимбольдо": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "арнольд шварценеггер": {
+      "category_num": 8,
+      "category": "Спорт",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "незнайка": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "русалочка": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "страшила": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "ньютон": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "лев толстой": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "артур конан дойл": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "джордж лукас": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "питер пэн": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "герберт уэллс": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "стивен кинг": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "чарли чаплин": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "владимир набоков": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "христофор колумб": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "мэрилин монро": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "клеопатра": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "орфей": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "бэнкси": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "лара крофт": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "уинстон черчилль": {
+      "category_num": 11,
+      "category": "Общество и политика",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "чарльз дарвин": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "гомер симпсон": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "робинзон крузо": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "кафка": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "александр сергеевич пушкин": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "кот матроскин": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "николай коперник": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "корней чуковский": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "змей горыныч": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "диоген": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "гай юлий цезарь": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "майк тайсон": {
+      "category_num": 8,
+      "category": "Спорт",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "барон мюнхгаузен": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "тесей": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Люди",
+      "confidence": 1.0
+    },
+    "плутон": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "швейцария": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "пизанская башня": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "австралия": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "рим": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "великая китайская стена": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "япония": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "ватикан": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "вавилон": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "берлинская стена": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "марс": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "мост": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "эйфелева башня": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "помпеи": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "сатурн": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "метро": {
+      "category_num": 12,
+      "category": "Быт и повседневность",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "пиза": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "троя": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "красное море": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "европа": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "израиль": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "стоунхендж": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "италия": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "париж": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "чили": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "лондон": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "аляска": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "берлин": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "сан-франциско": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "касабланка": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "мадагаскар": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "александрия": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "индия": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "эверест": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "манхэттен": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "вашингтон": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "тихий океан": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "остров пасхи": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "токио": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "ковентри": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "суэцкий канал": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "рио-де-жанейро": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "германия": {
+      "category_num": 4,
+      "category": "География",
+      "entity_type": "Места",
+      "confidence": 1.0
+    },
+    "титаник": {
+      "category_num": 11,
+      "category": "Общество и политика",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "вавилонская башня": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "ноев ковчег": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "маленький принц": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "дон кихот": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "гамлет": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "тетрис": {
+      "category_num": 14,
+      "category": "Логика и wordplay",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "крик": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "1984": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "машина времени": {
+      "category_num": 6,
+      "category": "Музыка",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "гарри поттер": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "анна каренина": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "последний день помпеи": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "пигмалион": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "кладбище домашних животных": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "на дне": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "оскар": {
+      "category_num": 14,
+      "category": "Логика и wordplay",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "прибытие поезда": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "репка": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "щелкунчик": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "тайная вечеря": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "челюсти": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "монополия": {
+      "category_num": 11,
+      "category": "Общество и политика",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "моби дик": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "красная шапочка": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "бенджамин баттон": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "кинг-конг": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "божественная комедия": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "человек-невидимка": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "вий": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "макбет": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "отелло": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "волшебная гора": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "ромео и джульетта": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "451 градус по фаренгейту": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "ледниковый период": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "мышеловка": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "джоконда": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "король лир": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "бурлаки на волге": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "рип ван винкль": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "день сурка": {
+      "category_num": 12,
+      "category": "Быт и повседневность",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "чёрный квадрат": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "пишущая машинка": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "дюна": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "евгений онегин": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "что? где? когда?": {
+      "category_num": 14,
+      "category": "Логика и wordplay",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "собака баскервилей": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "карточный домик": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "пиковая дама": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "война и мир": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "мона лиза": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "шестое чувство": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "заводной апельсин": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "трудно быть богом": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "библия": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "алая буква": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "десять негритят": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "король лев": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "преступление и наказание": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "мертвые души": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "джентльмены удачи": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "венера милосская": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "мастер и маргарита": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "три сестры": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "понедельник начинается в субботу": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "книга рекордов гиннесса": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "ревизор": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "апофеоз войны": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "повелитель мух": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "призрак оперы": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "унесённые ветром": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "доктор кто": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "людвиг ван бетховен": {
+      "category_num": 6,
+      "category": "Музыка",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "аватар": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "звёздные войны": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "густав климт": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "твин пикс": {
+      "category_num": 7,
+      "category": "Кино и театр",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "над пропастью во ржи": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "тарас бульба": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "ричард iii": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "война миров": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "венецианский купец": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "принц и нищий": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "вильгельм телль": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "летучий голландец": {
+      "category_num": 5,
+      "category": "Искусство",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "граф монте-кристо": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "алые паруса": {
+      "category_num": 2,
+      "category": "Литература",
+      "entity_type": "Произведения",
+      "confidence": 1.0
+    },
+    "глобальное потепление": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "солнечное затмение": {
+      "category_num": 13,
+      "category": "Природа и животные",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "корабль тесея": {
+      "category_num": 14,
+      "category": "Логика и wordplay",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "болезнь альцгеймера": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "атом": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "золотое сечение": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "большой взрыв": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "днк": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "чёрная дыра": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "тест тьюринга": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "рентген": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "черная дыра": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "лента мёбиуса": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Наука",
+      "confidence": 1.0
+    },
+    "железный занавес": {
+      "category_num": 11,
+      "category": "Общество и политика",
+      "entity_type": "Выражения",
+      "confidence": 1.0
+    },
+    "сухой закон": {
+      "category_num": 11,
+      "category": "Общество и политика",
+      "entity_type": "Выражения",
+      "confidence": 1.0
+    },
+    "медовый месяц": {
+      "category_num": 12,
+      "category": "Быт и повседневность",
+      "entity_type": "Выражения",
+      "confidence": 1.0
+    },
+    "крестовый поход": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Выражения",
+      "confidence": 1.0
+    },
+    "золотая лихорадка": {
+      "category_num": 11,
+      "category": "Общество и политика",
+      "entity_type": "Выражения",
+      "confidence": 1.0
+    },
+    "охота на ведьм": {
+      "category_num": 10,
+      "category": "Религия и мифология",
+      "entity_type": "Выражения",
+      "confidence": 1.0
+    },
+    "ноль": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Числа",
+      "confidence": 1.0
+    },
+    "пи": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Числа",
+      "confidence": 1.0
+    },
+    "42": {
+      "category_num": 14,
+      "category": "Логика и wordplay",
+      "entity_type": "Числа",
+      "confidence": 1.0
+    },
+    "404": {
+      "category_num": 3,
+      "category": "Наука и технологии",
+      "entity_type": "Числа",
+      "confidence": 1.0
+    },
+    "1001": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Числа",
+      "confidence": 1.0
+    },
+    "6": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Числа",
+      "confidence": 1.0
+    },
+    "13": {
+      "category_num": 1,
+      "category": "История",
+      "entity_type": "Числа",
+      "confidence": 1.0
+    }
+  },
+  "by_category": {
+    "Литература": [
+      "пушкин",
+      "карлсон",
+      "шалтай-болтай",
+      "чехов",
+      "агата кристи",
+      "льюис кэрролл",
+      "квазимодо",
+      "шерлок холмс",
+      "жюль верн",
+      "данте алигьери",
+      "редьярд киплинг",
+      "франкенштейн",
+      "джоан роулинг",
+      "терри пратчетт",
+      "офелия",
+      "антуан де сент-экзюпери",
+      "а.с",
+      "хорхе луис борхес",
+      "максим горький",
+      "незнайка",
+      "лев толстой",
+      "артур конан дойл",
+      "герберт уэллс",
+      "стивен кинг",
+      "владимир набоков",
+      "робинзон крузо",
+      "кафка",
+      "александр сергеевич пушкин",
+      "корней чуковский",
+      "барон мюнхгаузен",
+      "маленький принц",
+      "дон кихот",
+      "гарри поттер",
+      "анна каренина",
+      "моби дик",
+      "красная шапочка",
+      "божественная комедия",
+      "человек-невидимка",
+      "вий",
+      "волшебная гора",
+      "451 градус по фаренгейту",
+      "рип ван винкль",
+      "евгений онегин",
+      "собака баскервилей",
+      "пиковая дама",
+      "война и мир",
+      "заводной апельсин",
+      "трудно быть богом",
+      "алая буква",
+      "десять негритят",
+      "преступление и наказание",
+      "мертвые души",
+      "мастер и маргарита",
+      "три сестры",
+      "понедельник начинается в субботу",
+      "книга рекордов гиннесса",
+      "ревизор",
+      "повелитель мух",
+      "унесённые ветром",
+      "над пропастью во ржи",
+      "тарас бульба",
+      "ричард iii",
+      "война миров",
+      "венецианский купец",
+      "принц и нищий",
+      "граф монте-кристо",
+      "алые паруса"
+    ],
+    "Религия и мифология": [
+      "прометей",
+      "иисус христос",
+      "ной",
+      "санта-клаус",
+      "икар",
+      "сизиф",
+      "нарцисс",
+      "феникс",
+      "сфинкс",
+      "эдип",
+      "мидас",
+      "дракула",
+      "давид",
+      "папа римский",
+      "мартин лютер",
+      "понтий пилат",
+      "спиритический сеанс",
+      "харон",
+      "русалка",
+      "тантал",
+      "геракл",
+      "ева",
+      "одиссей",
+      "дед мороз",
+      "прокруст",
+      "русалочка",
+      "орфей",
+      "змей горыныч",
+      "тесей",
+      "ватикан",
+      "вавилонская башня",
+      "ноев ковчег",
+      "пигмалион",
+      "тайная вечеря",
+      "библия",
+      "охота на ведьм"
+    ],
+    "Искусство": [
+      "винсент ван гог",
+      "гарри гудини",
+      "пиноккио",
+      "чебурашка",
+      "казимир малевич",
+      "джокер",
+      "рене магритт",
+      "леонардо да винчи",
+      "робин гуд",
+      "марсель дюшан",
+      "человек-паук",
+      "джузеппе арчимбольдо",
+      "страшила",
+      "питер пэн",
+      "бэнкси",
+      "кот матроскин",
+      "пизанская башня",
+      "эйфелева башня",
+      "гамлет",
+      "последний день помпеи",
+      "кладбище домашних животных",
+      "репка",
+      "щелкунчик",
+      "отелло",
+      "ромео и джульетта",
+      "джоконда",
+      "бурлаки на волге",
+      "чёрный квадрат",
+      "мона лиза",
+      "венера милосская",
+      "апофеоз войны",
+      "призрак оперы",
+      "густав климт",
+      "вильгельм телль",
+      "летучий голландец"
+    ],
+    "Быт и повседневность": [
+      "барби",
+      "метро",
+      "день сурка",
+      "медовый месяц"
+    ],
+    "Природа и животные": [
+      "венера",
+      "белая ворона",
+      "плутон",
+      "марс",
+      "сатурн",
+      "стоунхендж",
+      "эверест",
+      "крик",
+      "челюсти",
+      "ледниковый период",
+      "дюна",
+      "глобальное потепление",
+      "солнечное затмение"
+    ],
+    "История": [
+      "герострат",
+      "наполеон",
+      "нерон",
+      "гагарин",
+      "александр македонский",
+      "христофор колумб",
+      "клеопатра",
+      "диоген",
+      "гай юлий цезарь",
+      "вавилон",
+      "берлинская стена",
+      "помпеи",
+      "троя",
+      "1984",
+      "крестовый поход",
+      "1001",
+      "6",
+      "13"
+    ],
+    "Наука и технологии": [
+      "юрий гагарин",
+      "нил армстронг",
+      "иоганн гутенберг",
+      "райт",
+      "галилео галилей",
+      "ньютон",
+      "чарльз дарвин",
+      "николай коперник",
+      "пишущая машинка",
+      "болезнь альцгеймера",
+      "атом",
+      "золотое сечение",
+      "большой взрыв",
+      "днк",
+      "чёрная дыра",
+      "тест тьюринга",
+      "рентген",
+      "черная дыра",
+      "лента мёбиуса",
+      "ноль",
+      "пи",
+      "404"
+    ],
+    "Спорт": [
+      "пеле",
+      "арнольд шварценеггер",
+      "майк тайсон"
+    ],
+    "Музыка": [
+      "фредди меркьюри",
+      "майкл джексон",
+      "машина времени",
+      "людвиг ван бетховен"
+    ],
+    "Кино и театр": [
+      "даль",
+      "фигаро",
+      "альфред хичкок",
+      "джордж лукас",
+      "чарли чаплин",
+      "мэрилин монро",
+      "лара крофт",
+      "гомер симпсон",
+      "на дне",
+      "прибытие поезда",
+      "бенджамин баттон",
+      "кинг-конг",
+      "макбет",
+      "мышеловка",
+      "король лир",
+      "карточный домик",
+      "шестое чувство",
+      "король лев",
+      "джентльмены удачи",
+      "доктор кто",
+      "аватар",
+      "звёздные войны",
+      "твин пикс"
+    ],
+    "Общество и политика": [
+      "ленин",
+      "адольф гитлер",
+      "уинстон черчилль",
+      "титаник",
+      "монополия",
+      "железный занавес",
+      "сухой закон",
+      "золотая лихорадка"
+    ],
+    "География": [
+      "швейцария",
+      "австралия",
+      "рим",
+      "великая китайская стена",
+      "япония",
+      "мост",
+      "пиза",
+      "красное море",
+      "европа",
+      "израиль",
+      "италия",
+      "париж",
+      "чили",
+      "лондон",
+      "аляска",
+      "берлин",
+      "сан-франциско",
+      "касабланка",
+      "мадагаскар",
+      "александрия",
+      "индия",
+      "манхэттен",
+      "вашингтон",
+      "тихий океан",
+      "остров пасхи",
+      "токио",
+      "ковентри",
+      "суэцкий канал",
+      "рио-де-жанейро",
+      "германия"
+    ],
+    "Логика и wordplay": [
+      "тетрис",
+      "оскар",
+      "что? где? когда?",
+      "корабль тесея",
+      "42"
+    ]
+  }
+}

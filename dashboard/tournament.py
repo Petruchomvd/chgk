@@ -508,10 +508,15 @@ def _tab_gentleman(conn, project_root: Path):
 
     data_dir = project_root / "data" / "gentleman_set"
 
-    # Загрузить категории ответов (если есть)
+    # Загрузить тематический маппинг (14 категорий) или fallback на 6 типов
     answer_category = {}
+    thematic_path = data_dir / "thematic_mapping.json"
     categorized_path = data_dir / "categorized_answers.json"
-    if categorized_path.exists():
+    if thematic_path.exists():
+        thematic_data = json.loads(thematic_path.read_text(encoding="utf-8"))
+        entity_themes = thematic_data.get("entity_themes", {})
+        answer_category = {k: v["category"] for k, v in entity_themes.items()}
+    elif categorized_path.exists():
         cat_data = json.loads(categorized_path.read_text(encoding="utf-8"))
         answer_category = cat_data.get("answer_category", {})
 
@@ -534,7 +539,9 @@ def _tab_gentleman(conn, project_root: Path):
     with col_freq:
         min_freq = st.slider("Мин. частота (в турнире)", 1, 10, 2, key="tg_min_freq")
     with col_cat:
-        cat_filter_options = ["Все", "Люди", "Места", "Произведения", "Наука", "Выражения", "Числа"]
+        # Собрать список уникальных категорий из данных
+        unique_cats = sorted(set(answer_category.values())) if answer_category else []
+        cat_filter_options = ["Все"] + unique_cats
         cat_filter = st.selectbox("Категория", cat_filter_options, key="tg_cat_filter")
 
     # Получить турнирные ответы из БД

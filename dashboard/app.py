@@ -888,27 +888,86 @@ elif page == "Джентльменский набор":
                 enriched_raw = json.loads(enriched_path.read_text(encoding="utf-8"))
                 enriched_data = enriched_raw.get("entities", {})
 
-            cat_cols = st.columns(len(GENTLEMAN_CATEGORY_ORDER))
-            for col, cat_name in zip(cat_cols, GENTLEMAN_CATEGORY_ORDER):
-                items = categories.get(cat_name, [])
-                col.metric(cat_name, len(items))
+            # Загрузить тематический маппинг (14 ЧГК-категорий)
+            thematic_path = data_dir / "thematic_mapping.json"
+            thematic_data = None
+            if thematic_path.exists():
+                thematic_data = json.loads(thematic_path.read_text(encoding="utf-8"))
 
-            tab_names = [name for name in GENTLEMAN_CATEGORY_ORDER if categories.get(name)]
-            if not tab_names:
-                st.info("Нет категоризированных данных")
+            if thematic_data:
+                # ── 14 тематических вкладок ──
+                entity_themes = thematic_data.get("entity_themes", {})
+                # Собрать данные по 14 категориям
+                from database.seed_taxonomy import TAXONOMY
+                cat_order_14 = [name_ru for _, name_ru, _ in TAXONOMY]
+                thematic_categories = {name: [] for name in cat_order_14}
+                for key, theme in entity_themes.items():
+                    cat_name = theme.get("category", "")
+                    if cat_name in thematic_categories:
+                        # Найти частоту из categories
+                        freq = 0
+                        for etype_items in categories.values():
+                            for k, f in etype_items:
+                                if k == key:
+                                    freq = f
+                                    break
+                            if freq:
+                                break
+                        if freq >= min_freq:
+                            thematic_categories[cat_name].append([key, freq])
+                # Сортировать по частоте
+                for cat_name in thematic_categories:
+                    thematic_categories[cat_name].sort(key=lambda x: x[1], reverse=True)
+
+                # Метрики (2 ряда по 7)
+                row1 = cat_order_14[:7]
+                row2 = cat_order_14[7:]
+                cols1 = st.columns(7)
+                for col, name in zip(cols1, row1):
+                    col.metric(name, len(thematic_categories.get(name, [])))
+                cols2 = st.columns(7)
+                for col, name in zip(cols2, row2):
+                    col.metric(name, len(thematic_categories.get(name, [])))
+
+                tab_names = [n for n in cat_order_14 if thematic_categories.get(n)]
+                if not tab_names:
+                    st.info("Нет тематических данных")
+                else:
+                    tabs = st.tabs(tab_names)
+                    for tab, cat_name in zip(tabs, tab_names):
+                        with tab:
+                            color = CATEGORY_COLORS.get(cat_name, "#666666")
+                            _show_tab(
+                                thematic_categories[cat_name],
+                                "Ответ", "Вопросов",
+                                f"Топ: {cat_name}", color,
+                                answer_questions, display_forms,
+                                pack_counts=pack_counts,
+                                enriched_data=enriched_data,
+                            )
             else:
-                tabs = st.tabs(tab_names)
-                for tab, cat_name in zip(tabs, tab_names):
-                    with tab:
-                        color = GENTLEMAN_CATEGORY_COLORS.get(cat_name, "#666666")
-                        _show_tab(
-                            categories[cat_name],
-                            "Ответ", "Вопросов",
-                            f"Топ: {cat_name}", color,
-                            answer_questions, display_forms,
-                            pack_counts=pack_counts,
-                            enriched_data=enriched_data,
-                        )
+                # Fallback: 6 вкладок по типу сущности
+                cat_cols = st.columns(len(GENTLEMAN_CATEGORY_ORDER))
+                for col, cat_name in zip(cat_cols, GENTLEMAN_CATEGORY_ORDER):
+                    items = categories.get(cat_name, [])
+                    col.metric(cat_name, len(items))
+
+                tab_names = [name for name in GENTLEMAN_CATEGORY_ORDER if categories.get(name)]
+                if not tab_names:
+                    st.info("Нет категоризированных данных")
+                else:
+                    tabs = st.tabs(tab_names)
+                    for tab, cat_name in zip(tabs, tab_names):
+                        with tab:
+                            color = GENTLEMAN_CATEGORY_COLORS.get(cat_name, "#666666")
+                            _show_tab(
+                                categories[cat_name],
+                                "Ответ", "Вопросов",
+                                f"Топ: {cat_name}", color,
+                                answer_questions, display_forms,
+                                pack_counts=pack_counts,
+                                enriched_data=enriched_data,
+                            )
 
         elif view == "Все ответы":
             top_data = json.loads(

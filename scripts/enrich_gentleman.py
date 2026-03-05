@@ -113,8 +113,9 @@ def main():
     enriched = existing.get("entities", {})
     not_found = set(existing.get("not_found", []))
 
-    # Wikipedia клиент
-    wiki = WikipediaClient(CACHE_PATH)
+    # Wikipedia клиент (с подсказками для disambiguation)
+    hints_path = DATA_DIR / "wiki_hints.json"
+    wiki = WikipediaClient(CACHE_PATH, hints_path=hints_path)
 
     enriched_count = 0
     skipped_count = 0

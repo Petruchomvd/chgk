@@ -20,13 +20,21 @@ REQUEST_DELAY = 1.0  # секунды между запросами
 class WikipediaClient:
     """Клиент Wikipedia API с файловым кэшем."""
 
-    def __init__(self, cache_path: Path, delay: float = REQUEST_DELAY):
+    def __init__(self, cache_path: Path, delay: float = REQUEST_DELAY,
+                 hints_path: Optional[Path] = None):
         self.cache_path = cache_path
         self.delay = delay
         self.session = requests.Session()
         self.session.headers["User-Agent"] = USER_AGENT
         self._cache = self._load_cache()
+        self._hints = self._load_hints(hints_path)
         self._last_request_time = 0.0
+
+    @staticmethod
+    def _load_hints(hints_path: Optional[Path]) -> dict:
+        if hints_path and hints_path.exists():
+            return json.loads(hints_path.read_text(encoding="utf-8"))
+        return {}
 
     def _load_cache(self) -> dict:
         if self.cache_path.exists():
@@ -109,7 +117,8 @@ class WikipediaClient:
         if not force and key in self._cache:
             return self._cache[key]
 
-        title = self.search(display_name)
+        search_query = self._hints.get(key, display_name)
+        title = self.search(search_query)
         if not title:
             self._cache[key] = None
             return None
@@ -160,9 +169,10 @@ def _first_sentences(text: str, count: int = 2) -> str:
     # Убрать двойные пробелы после удаления скобок
     text = re.sub(r"\s{2,}", " ", text).strip()
 
-    # Разбить по точкам, но не на сокращениях
-    # Паттерн: точка, после которой пробел + заглавная буква или конец строки
-    parts = re.split(r"\.(?=\s+[А-ЯA-Z]|$)", text)
+    # Разбить по точкам, но не на сокращениях и инициалах
+    # Негативный lookbehind: не разбивать если перед точкой одиночная заглавная (инициал)
+    # Позитивный lookahead: после точки пробел + слово от 2+ символов с заглавной
+    parts = re.split(r"(?<![А-ЯA-Z])\.(?=\s+[А-ЯA-Z][а-яa-z]|$)", text)
 
     sentences = []
     for part in parts:

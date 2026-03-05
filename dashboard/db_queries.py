@@ -235,6 +235,8 @@ def get_comparison_questions(
     category_filter: Optional[str] = None,
     limit: int = 20,
     offset: int = 0,
+    random_order: bool = False,
+    random_seed: Optional[int] = None,
 ) -> tuple:
     """Вопросы с классификациями обеих моделей, с пагинацией.
 
@@ -304,7 +306,7 @@ def get_comparison_questions(
         FROM compared cmp
         JOIN questions q ON q.id = cmp.question_id
         {where_sql}
-        ORDER BY cmp.question_id
+        ORDER BY {f"(cmp.question_id * 2654435761 + {random_seed or 0}) % 2147483647" if random_order else "cmp.question_id"}
         LIMIT ? OFFSET ?
     """
     rows = [dict(r) for r in conn.execute(

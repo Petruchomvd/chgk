@@ -503,7 +503,7 @@ elif page == "Сравнение моделей":
                 # ── Браузер вопросов с классификациями ──
                 st.subheader("Вопросы и классификации")
 
-                col_filter, col_cat, col_search = st.columns([1, 1, 2])
+                col_filter, col_cat, col_search, col_order = st.columns([1, 1, 2, 1])
                 with col_filter:
                     filter_labels = {"all": "Все", "agree": "Совпадают", "disagree": "Расходятся"}
                     cmp_filter = st.selectbox(
@@ -518,16 +518,27 @@ elif page == "Сравнение моделей":
                     cmp_cat = st.selectbox("Категория", cat_options, key="cmp_cat_filter")
                 with col_search:
                     cmp_search = st.text_input("Поиск", placeholder="По тексту вопроса...", key="cmp_search")
+                with col_order:
+                    cmp_random = st.toggle("Вразброс", value=False, key="cmp_random_order")
+                    if cmp_random and "cmp_random_seed" not in st.session_state:
+                        import random as _rnd
+                        st.session_state.cmp_random_seed = _rnd.randint(1, 1_000_000)
+                    if cmp_random:
+                        if st.button("Перемешать", key="cmp_reshuffle"):
+                            import random as _rnd
+                            st.session_state.cmp_random_seed = _rnd.randint(1, 1_000_000)
 
                 CMP_PAGE_SIZE = 20
                 cat_name = cmp_cat if cmp_cat != "Все" else None
 
+                _rnd_seed = st.session_state.get("cmp_random_seed", 42)
                 cmp_questions, cmp_total = get_comparison_questions(
                     conn, model_a, model_b,
                     filter_mode=cmp_filter,
                     search_text=cmp_search,
                     category_filter=cat_name,
                     limit=CMP_PAGE_SIZE, offset=0,
+                    random_order=cmp_random, random_seed=_rnd_seed,
                 )
 
                 # Пагинация
@@ -545,6 +556,7 @@ elif page == "Сравнение моделей":
                         search_text=cmp_search,
                         category_filter=cat_name,
                         limit=CMP_PAGE_SIZE, offset=cmp_offset,
+                        random_order=cmp_random, random_seed=_rnd_seed,
                     )
 
                 disagree_count = (df_common["cat_id_a"] != df_common["cat_id_b"]).sum()

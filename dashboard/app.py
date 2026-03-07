@@ -393,12 +393,11 @@ elif page == "Авторы":
 
     authors = top_authors(conn, limit=30)
     if authors:
-        st.subheader("Топ авторов по количеству пакетов")
+        st.subheader("Топ авторов по количеству вопросов")
         df_authors = pd.DataFrame(authors)
         st.dataframe(
             df_authors.rename(columns={
-                "authors": "Автор(ы)",
-                "pack_count": "Пакетов",
+                "authors": "Автор",
                 "question_count": "Вопросов",
             }),
             use_container_width=True,

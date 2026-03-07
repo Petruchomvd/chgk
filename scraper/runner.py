@@ -31,30 +31,25 @@ def get_last_pack_id(session) -> int:
     """Определить ID последнего пакета на сайте."""
     import re
 
-    from scraper.pack_parser import _extract_push_blocks
-
     resp = polite_get(session, BASE_URL)
     if not resp or resp.status_code != 200:
         print("Не удалось загрузить главную страницу")
         return 0
 
     html = resp.text
-    pushes = _extract_push_blocks(html)
 
+    # Ищем /pack/ID во всём HTML (push-блоки + обычная разметка)
     max_id = 0
-    for block in pushes:
-        if "pack/" not in block:
-            continue
-        ids = re.findall(r"/pack/(\d+)", block)
-        for id_str in ids:
-            max_id = max(max_id, int(id_str))
+    for id_str in re.findall(r"/pack/(\d+)", html):
+        max_id = max(max_id, int(id_str))
 
     if max_id > 0:
         print(f"Последний пакет на сайте: #{max_id}")
     return max_id
 
 
-def scrape_pack(session, conn, pack_id: int) -> bool:
+def scrape_pack(session, conn, pack_id: int,
+                date_from: str = None, date_to: str = None) -> bool:
     """Спарсить один пакет: метаданные + вопросы."""
     url = f"{BASE_URL}/pack/{pack_id}"
 
@@ -80,6 +75,17 @@ def scrape_pack(session, conn, pack_id: int) -> bool:
     # Метаданные пакета
     metadata = extract_pack_metadata_from_html(html, pack_id)
     upsert_pack(conn, metadata)
+
+    # Фильтр по дате
+    pub_date = metadata.get("published_date") or ""
+    if date_from and pub_date < date_from:
+        mark_pack_status(conn, pack_id, "skipped", f"date {pub_date} < {date_from}")
+        print(f"пропуск (дата {pub_date} < {date_from})")
+        return False
+    if date_to and pub_date > date_to:
+        mark_pack_status(conn, pack_id, "skipped", f"date {pub_date} > {date_to}")
+        print(f"пропуск (дата {pub_date} > {date_to})")
+        return False
 
     # Вопросы
     raw_questions = extract_questions_from_html(html)
@@ -108,7 +114,7 @@ def scrape_pack(session, conn, pack_id: int) -> bool:
 
 
 def run_scraper(start_id: int = 1, end_id: int = None, max_packs: int = None,
-                force: bool = False):
+                force: bool = False, date_from: str = None, date_to: str = None):
     """Главный цикл парсинга."""
     conn = get_connection(DB_PATH)
     session = create_session()
@@ -130,7 +136,10 @@ def run_scraper(start_id: int = 1, end_id: int = None, max_packs: int = None,
         pack_ids = pack_ids[:max_packs]
 
     total = len(pack_ids)
-    print(f"\nПарсинг: {total} паков (ID {start_id}–{end_id}, пропущено {len(already_parsed)})\n")
+    date_info = ""
+    if date_from or date_to:
+        date_info = f", даты {date_from or '...'} – {date_to or '...'}"
+    print(f"\nПарсинг: {total} паков (ID {start_id}–{end_id}, пропущено {len(already_parsed)}{date_info})\n")
 
     success = 0
     failed = 0
@@ -139,7 +148,7 @@ def run_scraper(start_id: int = 1, end_id: int = None, max_packs: int = None,
         upsert_pack(conn, {"id": pack_id, "parse_status": "pending"})
 
         print(f"  [{i+1}/{total}] pack/{pack_id}...", end=" ", flush=True)
-        if scrape_pack(session, conn, pack_id):
+        if scrape_pack(session, conn, pack_id, date_from=date_from, date_to=date_to):
             success += 1
         else:
             failed += 1
@@ -164,6 +173,9 @@ if __name__ == "__main__":
     parser.add_argument("--end", type=int, default=None, help="Конечный ID пакета")
     parser.add_argument("--max", type=int, default=None, help="Максимум пакетов")
     parser.add_argument("--force", action="store_true", help="Перепарсить уже спарсенные паки")
+    parser.add_argument("--date-from", type=str, default=None, help="Мин. дата публикации (YYYY-MM-DD)")
+    parser.add_argument("--date-to", type=str, default=None, help="Макс. дата публикации (YYYY-MM-DD)")
     args = parser.parse_args()
 
-    run_scraper(start_id=args.start, end_id=args.end, max_packs=args.max, force=args.force)
+    run_scraper(start_id=args.start, end_id=args.end, max_packs=args.max,
+                force=args.force, date_from=args.date_from, date_to=args.date_to)

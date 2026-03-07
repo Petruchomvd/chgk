@@ -24,8 +24,8 @@ def get_subcategories_for_categories(
 
 
 def _multi_author_clause(author_filters: List[str]) -> Tuple[str, list]:
-    """OR-clause для нескольких авторов."""
-    clauses = ["p.authors LIKE ?" for _ in author_filters]
+    """OR-clause для нескольких авторов (по q.authors JSON)."""
+    clauses = ["q.authors LIKE ?" for _ in author_filters]
     params = [f"%{a}%" for a in author_filters]
     return f"({' OR '.join(clauses)})", params
 
@@ -61,7 +61,7 @@ def count_available_by_category(
         params.extend(difficulty_range)
 
     if author_filter:
-        where_parts.append("p.authors LIKE ?")
+        where_parts.append("q.authors LIKE ?")
         params.append(f"%{author_filter}%")
     if author_filters:
         sql_frag, ap = _multi_author_clause(author_filters)
@@ -97,24 +97,24 @@ def count_available_random(
         need_pack_join = True
 
     if author_filter:
-        where_parts.append("p.authors LIKE ?")
+        where_parts.append("q.authors LIKE ?")
         params.append(f"%{author_filter}%")
-        need_pack_join = True
 
     if author_filters:
         sql_frag, ap = _multi_author_clause(author_filters)
         where_parts.append(sql_frag)
         params.extend(ap)
-        need_pack_join = True
 
-    if not need_pack_join:
+    has_filters = len(where_parts) > 1
+    if not has_filters:
         return conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
 
     where_sql = " AND ".join(where_parts)
+    pack_join = "JOIN packs p ON q.pack_id = p.id" if need_pack_join else ""
     return conn.execute(f"""
         SELECT COUNT(*)
         FROM questions q
-        JOIN packs p ON q.pack_id = p.id
+        {pack_join}
         WHERE {where_sql}
     """, params).fetchone()[0]
 
@@ -180,7 +180,7 @@ def get_training_questions_by_category(
         params.extend(difficulty_range)
 
     if author_filter:
-        where_parts.append("p.authors LIKE ?")
+        where_parts.append("q.authors LIKE ?")
         params.append(f"%{author_filter}%")
     if author_filters:
         sql_frag, ap = _multi_author_clause(author_filters)
@@ -274,21 +274,21 @@ def get_training_questions_random(
         need_pack_join = True
 
     if author_filter:
-        where_parts.append("p.authors LIKE ?")
+        where_parts.append("q.authors LIKE ?")
         params.append(f"%{author_filter}%")
-        need_pack_join = True
 
     if author_filters:
         sql_frag, ap = _multi_author_clause(author_filters)
         where_parts.append(sql_frag)
         params.extend(ap)
-        need_pack_join = True
 
-    if need_pack_join:
+    has_filters = len(where_parts) > 1
+    if has_filters:
         where_sql = " AND ".join(where_parts)
+        pack_join = "JOIN packs p ON q.pack_id = p.id" if need_pack_join else ""
         rows = conn.execute(f"""
             SELECT q.id FROM questions q
-            JOIN packs p ON q.pack_id = p.id
+            {pack_join}
             WHERE {where_sql}
         """, params).fetchall()
     else:

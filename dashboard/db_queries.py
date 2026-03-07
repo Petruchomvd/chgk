@@ -47,11 +47,11 @@ def _model_filter(alias: str, model_name: Optional[str]) -> tuple:
 
 
 def _multi_author_filter(authors: List[str]) -> Tuple[str, tuple]:
-    """SQL-фрагмент для фильтрации по нескольким авторам (OR).
+    """SQL-фрагмент для фильтрации по нескольким авторам вопросов (OR).
 
-    Returns: ("(p.authors LIKE ? OR p.authors LIKE ? ...)", ('%Author1%', ...))
+    Returns: ("(q.authors LIKE ? OR q.authors LIKE ? ...)", ('%Author1%', ...))
     """
-    clauses = ["p.authors LIKE ?" for _ in authors]
+    clauses = ["q.authors LIKE ?" for _ in authors]
     params = tuple(f"%{a}%" for a in authors)
     return f"({' OR '.join(clauses)})", params
 
@@ -342,7 +342,7 @@ def search_questions(
         where_parts.append("c.id = ?")
         params.append(category_id)
     if author_filter:
-        where_parts.append("p.authors LIKE ?")
+        where_parts.append("q.authors LIKE ?")
         params.append(f"%{author_filter}%")
     if author_filters:
         sql_frag, author_params = _multi_author_filter(author_filters)
@@ -354,7 +354,7 @@ def search_questions(
     return [dict(r) for r in conn.execute(f"""
         SELECT q.id, q.text, q.answer, q.comment,
                p.title AS pack_title, p.difficulty AS pack_difficulty,
-               q.difficulty AS question_difficulty, p.authors AS pack_authors,
+               q.difficulty AS question_difficulty, q.authors AS question_authors,
                c.name_ru AS category, s.name_ru AS subcategory,
                qt.confidence, qt.model_name
         FROM questions q
@@ -390,7 +390,7 @@ def count_search_results(
         where_parts.append("c.id = ?")
         params.append(category_id)
     if author_filter:
-        where_parts.append("p.authors LIKE ?")
+        where_parts.append("q.authors LIKE ?")
         params.append(f"%{author_filter}%")
     if author_filters:
         sql_frag, author_params = _multi_author_filter(author_filters)
@@ -500,54 +500,57 @@ def subcategory_trends_by_year(
 
 # ─── Авторы ──────────────────────────────────────────────────────
 
+def _parse_question_authors(authors_json: str) -> List[str]:
+    """Извлечь имена авторов из JSON-строки поля questions.authors."""
+    if not authors_json:
+        return []
+    try:
+        alist = json.loads(authors_json)
+        if isinstance(alist, list):
+            return [a["name"] for a in alist if isinstance(a, dict) and "name" in a]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return [a.strip() for a in authors_json.split(",") if a.strip()]
+
+
 def top_authors(conn: sqlite3.Connection, limit: int = 20) -> List[Dict]:
-    """Топ-авторы по количеству пакетов (авторы из соавторских строк разделяются)."""
+    """Топ-авторы по количеству вопросов (из q.authors JSON)."""
     from collections import defaultdict
 
     rows = conn.execute("""
-        SELECT p.authors, COUNT(*) AS pack_count,
-               SUM(p.question_count) AS question_count
-        FROM packs p
-        WHERE p.authors IS NOT NULL AND p.authors != ''
-          AND p.parse_status = 'parsed'
-        GROUP BY p.authors
+        SELECT q.authors
+        FROM questions q
+        WHERE q.authors IS NOT NULL AND q.authors != ''
     """).fetchall()
 
-    author_packs: dict = defaultdict(int)
-    author_questions: dict = defaultdict(int)
-
+    author_count: dict = defaultdict(int)
     for row in rows:
-        q_count = row["question_count"] or 0
-        for author in [a.strip() for a in row["authors"].split(",") if a.strip()]:
-            author_packs[author] += row["pack_count"]
-            author_questions[author] += q_count
+        for name in _parse_question_authors(row["authors"]):
+            author_count[name] += 1
 
-    sorted_authors = sorted(author_packs.items(), key=lambda x: x[1], reverse=True)
-    result = [
-        {"authors": author, "pack_count": packs, "question_count": author_questions[author]}
-        for author, packs in sorted_authors[:limit]
+    sorted_authors = sorted(author_count.items(), key=lambda x: x[1], reverse=True)
+    return [
+        {"authors": author, "question_count": count}
+        for author, count in sorted_authors[:limit]
     ]
-    return result
 
 
 def all_authors_sorted(conn: sqlite3.Connection) -> List[str]:
-    """Все авторы, отсортированные по количеству пакетов (убывание)."""
+    """Все авторы вопросов, отсортированные по количеству вопросов (убывание)."""
     from collections import defaultdict
 
     rows = conn.execute("""
-        SELECT p.authors, COUNT(*) AS pack_count
-        FROM packs p
-        WHERE p.authors IS NOT NULL AND p.authors != ''
-          AND p.parse_status = 'parsed'
-        GROUP BY p.authors
+        SELECT q.authors
+        FROM questions q
+        WHERE q.authors IS NOT NULL AND q.authors != ''
     """).fetchall()
 
-    author_packs: dict = defaultdict(int)
+    author_count: dict = defaultdict(int)
     for row in rows:
-        for author in [a.strip() for a in row["authors"].split(",") if a.strip()]:
-            author_packs[author] += row["pack_count"]
+        for name in _parse_question_authors(row["authors"]):
+            author_count[name] += 1
 
-    return [a for a, _ in sorted(author_packs.items(), key=lambda x: x[1], reverse=True)]
+    return [a for a, _ in sorted(author_count.items(), key=lambda x: x[1], reverse=True)]
 
 
 def author_categories(
@@ -565,7 +568,7 @@ def author_categories(
         JOIN packs p ON q.pack_id = p.id
         JOIN subcategories s ON qt.subcategory_id = s.id
         JOIN categories c ON s.category_id = c.id
-        WHERE p.authors LIKE ? {where}
+        WHERE q.authors LIKE ? {where}
         GROUP BY c.id
         ORDER BY count DESC
     """, (f"%{author}%",) + params).fetchall()]
@@ -666,16 +669,14 @@ def tournament_per_author_stats(
         total = conn.execute("""
             SELECT COUNT(DISTINCT q.id)
             FROM questions q
-            JOIN packs p ON q.pack_id = p.id
-            WHERE p.authors LIKE ?
+            WHERE q.authors LIKE ?
         """, (f"%{author}%",)).fetchone()[0]
 
         classified = conn.execute(f"""
             SELECT COUNT(DISTINCT qt.question_id)
             FROM question_topics qt
             JOIN questions q ON qt.question_id = q.id
-            JOIN packs p ON q.pack_id = p.id
-            WHERE p.authors LIKE ? {where_model}
+            WHERE q.authors LIKE ? {where_model}
         """, (f"%{author}%",) + model_params).fetchone()[0]
 
         results.append({
@@ -702,7 +703,6 @@ def tournament_combined_categories(
                COUNT(DISTINCT qt.question_id) AS count
         FROM question_topics qt
         JOIN questions q ON qt.question_id = q.id
-        JOIN packs p ON q.pack_id = p.id
         JOIN subcategories s ON qt.subcategory_id = s.id
         JOIN categories c ON s.category_id = c.id
         WHERE {author_sql} {where_model}
@@ -740,7 +740,6 @@ def tournament_top_answers(
                q.answer AS sample_answer,
                COUNT(*) AS cnt
         FROM questions q
-        JOIN packs p ON q.pack_id = p.id
         WHERE {author_clause}
           AND q.answer IS NOT NULL AND TRIM(q.answer) != ''
         GROUP BY answer_key

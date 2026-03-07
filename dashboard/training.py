@@ -95,7 +95,7 @@ def _render_config(conn, project_root: Path):
     author_filter = None
     if mode != "Джентльменский набор":
         author_list = ["Все авторы"] + all_authors_sorted(conn)
-        author_sel = st.selectbox("Автор пакета", author_list, key="train_author")
+        author_sel = st.selectbox("Автор вопроса", author_list, key="train_author")
         if author_sel != "Все авторы":
             author_filter = author_sel
 
@@ -210,6 +210,17 @@ def _render_quiz(conn):
     pack = q.get("pack_title")
     if pack:
         meta.append(pack)
+    q_authors = q.get("authors")
+    if q_authors:
+        try:
+            import json
+            alist = json.loads(q_authors)
+            if isinstance(alist, list):
+                names = [a["name"] for a in alist if isinstance(a, dict) and "name" in a]
+                if names:
+                    meta.append(f"Автор: {', '.join(names)}")
+        except (json.JSONDecodeError, TypeError):
+            meta.append(f"Автор: {q_authors}")
     if meta:
         st.caption(" · ".join(meta))
 

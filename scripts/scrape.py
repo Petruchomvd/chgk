@@ -15,6 +15,9 @@ if __name__ == "__main__":
     parser.add_argument("--end", type=int, default=None, help="Конечный ID пакета")
     parser.add_argument("--max", type=int, default=None, help="Максимум пакетов для парсинга")
     parser.add_argument("--force", action="store_true", help="Перепарсить уже спарсенные паки")
+    parser.add_argument("--date-from", type=str, default=None, help="Мин. дата публикации (YYYY-MM-DD)")
+    parser.add_argument("--date-to", type=str, default=None, help="Макс. дата публикации (YYYY-MM-DD)")
     args = parser.parse_args()
 
-    run_scraper(start_id=args.start, end_id=args.end, max_packs=args.max, force=args.force)
+    run_scraper(start_id=args.start, end_id=args.end, max_packs=args.max,
+                force=args.force, date_from=args.date_from, date_to=args.date_to)

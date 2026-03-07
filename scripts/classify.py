@@ -104,6 +104,11 @@ def main():
         dest="compare_with",
         help="Классифицировать только вопросы, уже обработанные этой моделью (для сравнения)",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Удалить старые классификации модели и переклассифицировать заново",
+    )
     # Legacy-параметры (обратная совместимость)
     parser.add_argument("--groq", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--groq-key", type=str, default=None, help=argparse.SUPPRESS)
@@ -159,6 +164,20 @@ def main():
     twostage = not args.onestage
 
     from classifier.runner import run_classification
+
+    # --force: удалить старые классификации этой модели
+    if args.force:
+        from config import DB_PATH
+        from database.db import get_connection
+
+        model_name = args.model or __import__("classifier.providers", fromlist=["PROVIDER_PRESETS"]).PROVIDER_PRESETS[args.provider]["default_model"]
+        conn = get_connection(DB_PATH)
+        deleted = conn.execute(
+            "DELETE FROM question_topics WHERE model_name = ?", (model_name,)
+        ).rowcount
+        conn.commit()
+        conn.close()
+        print(f"[force] Удалено {deleted} старых классификаций модели {model_name}")
 
     run_classification(
         provider=provider,

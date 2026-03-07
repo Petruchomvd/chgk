@@ -47,6 +47,17 @@ ALL_STOPWORDS = {
 }
 
 OUTPUT_DIR = PROJECT_ROOT / "data" / "gentleman_set"
+
+# Lazy-загрузка морфоанализатора для лемматизации ответов
+_morph = None
+
+
+def _get_morph():
+    global _morph
+    if _morph is None:
+        import pymorphy3
+        _morph = pymorphy3.MorphAnalyzer()
+    return _morph
 ORG_KEYWORDS = {
     "компания", "корпорация", "фирма", "бренд", "банк", "университет",
     "институт", "академия", "газета", "журнал", "издательство", "партия",
@@ -65,9 +76,28 @@ LOW_INFO_EXACT_ANSWERS = {
 
 
 def normalize_answer_key(text: str) -> str:
-    """Нормализовать ответ в стабильный ключ для подсчёта."""
+    """Нормализовать ответ в стабильный ключ для подсчёта.
+
+    Выполняет: lower, ё→е, лемматизация каждого слова, схлопывание пробелов.
+    Это позволяет считать 'Пушкин' и 'Пушкина', 'яйцо' и 'яйца' как один ответ.
+    """
     normalized = re.sub(r"\s+", " ", text.strip().lower())
-    return normalized
+    # ё → е
+    normalized = normalized.replace("ё", "е")
+    # Лемматизация
+    morph = _get_morph()
+    tokens = re.findall(r"[а-яёеa-z0-9]+", normalized)
+    if not tokens:
+        return normalized
+    lemmas = []
+    for token in tokens:
+        # Не лемматизируем числа и латиницу
+        if re.fullmatch(r"[0-9]+", token) or re.fullmatch(r"[a-z]+", token):
+            lemmas.append(token)
+        else:
+            parsed = morph.parse(token)[0]
+            lemmas.append(parsed.normal_form.replace("ё", "е"))
+    return " ".join(lemmas)
 
 
 def is_numeric_like_answer(text: str) -> bool:
@@ -345,10 +375,8 @@ def extract_entities(answers: list[tuple[int, str]]) -> dict:
 
 def extract_keywords(answers: list[tuple[int, str]]) -> dict:
     """Лемматизация ответов, частотность слов и биграмм."""
-    import pymorphy3
-
     print("  Загрузка морфоанализатора...", flush=True)
-    morph = pymorphy3.MorphAnalyzer()
+    morph = _get_morph()
 
     lemma_counter = Counter()
     bigram_counter = Counter()

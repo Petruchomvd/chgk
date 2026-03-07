@@ -1,18 +1,19 @@
-"""Классификация сущностей джентльменского набора в 14 тематических категорий ЧГК.
+"""Классификация топ-ответов ЧГК в 14 тематических категорий.
 
-Использует LLM для определения тематической категории каждой сущности
-на основе имени, типа и Wikipedia-описания.
+Берёт ВСЕ top_answers.json напрямую и раскладывает по 14 категориям,
+без промежуточного слоя из 6 категорий.
 
 Использование:
-    python scripts/classify_gentleman_entities.py
-    python scripts/classify_gentleman_entities.py --limit 10
     python scripts/classify_gentleman_entities.py --force
+    python scripts/classify_gentleman_entities.py --provider openrouter --model openai/gpt-4.1-mini
+    python scripts/classify_gentleman_entities.py --top 500
 """
 
 import argparse
 import json
+import re
 import sys
-import time
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -27,232 +28,292 @@ from database.seed_taxonomy import TAXONOMY
 DATA_DIR = PROJECT_ROOT / "data" / "gentleman_set"
 OUTPUT_PATH = DATA_DIR / "thematic_mapping.json"
 
-# Построить список категорий для промпта
+# Категории для промпта
 CATEGORY_LIST = "\n".join(
     f"{i}. {name_ru}" for i, (_, name_ru, _) in enumerate(TAXONOMY, 1)
 )
+CAT_NAMES = {i: name_ru for i, (_, name_ru, _) in enumerate(TAXONOMY, 1)}
+NUM_CATEGORIES = len(TAXONOMY)
 
-SYSTEM_PROMPT = f"""Ты классифицируешь сущности (ответы на вопросы ЧГК) по 14 тематическим категориям.
+BATCH_PROMPT = f"""Ты классифицируешь ответы на вопросы ЧГК по {NUM_CATEGORIES} тематическим категориям.
 
 Категории:
 {CATEGORY_LIST}
 
-Для каждой сущности определи ОДНУ наиболее подходящую категорию.
-Учитывай: за что эта сущность наиболее известна? В каких вопросах ЧГК она чаще всего встречается?
+Правила:
+- Для каждого ответа определи ОДНУ наиболее подходящую категорию.
+- Классифицируй по ПРЕДМЕТНОЙ ОБЛАСТИ ответа, не по форме вопроса.
+- Если ответ — конкретный человек, животное, предмет, место и т.д., определи категорию по тому, за что этот ответ наиболее известен.
+- Примеры: «слон» → Природа и животные, «зеркало» → Быт и повседневность, «Пушкин» → Литература, «Венеция» → География, «радуга» → Наука и технологии, «Титаник» → Кино и театр.
+- НЕ пропускай ответы — каждый ответ ДОЛЖЕН получить категорию.
 
-Верни JSON: {{"cat": N}}
-где N — номер категории (1-14).
-Без пояснений, только JSON."""
+Верни ТОЛЬКО валидный JSON-объект: {{"ответ": номер_категории, ...}}
+Без пояснений, без markdown."""
 
-FEW_SHOT = [
-    {"entity": "Пушкин — русский поэт, драматург и прозаик", "out": {"cat": 2}},
-    {"entity": "Наполеон — император Франции, полководец", "out": {"cat": 1}},
-    {"entity": "Швейцария — государство в Центральной Европе", "out": {"cat": 4}},
-    {"entity": "Эйнштейн — физик-теоретик, создатель теории относительности", "out": {"cat": 3}},
-    {"entity": "Прометей — титан из древнегреческой мифологии", "out": {"cat": 10}},
-    {"entity": "Оскар — ежегодная кинопремия", "out": {"cat": 7}},
-    {"entity": "Шахматы — настольная логическая игра", "out": {"cat": 8}},
-]
+CONTEXT_PROMPT = f"""Ты классифицируешь ответы ЧГК по {NUM_CATEGORIES} тематическим категориям С КОНТЕКСТОМ вопросов.
 
+Категории:
+{CATEGORY_LIST}
 
-def build_messages(entity_name: str, entity_type: str, description: str) -> list:
-    """Построить сообщения для LLM."""
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+Для каждого ответа даны 1-2 вопроса, где он встречался. Используй контекст для точности.
 
-    # Few-shot
-    for ex in FEW_SHOT:
-        messages.append({"role": "user", "content": ex["entity"]})
-        messages.append({"role": "assistant", "content": json.dumps(ex["out"])})
+Правила:
+- Каждый ответ ДОЛЖЕН получить категорию.
+- Классифицируй по предметной области.
 
-    # Текущая сущность
-    parts = [entity_name]
-    if description:
-        parts.append(f"— {description}")
-    elif entity_type:
-        parts.append(f"(тип: {entity_type})")
-    messages.append({"role": "user", "content": " ".join(parts)})
-
-    return messages
+Верни ТОЛЬКО JSON: {{"ответ": номер_категории, ...}}"""
 
 
-def parse_response(text: str) -> dict | None:
+def normalize_key(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def parse_batch_response(response: str, expected: list[str]) -> dict[str, int]:
     """Извлечь JSON из ответа LLM."""
-    import re
-    text = text.strip()
-    # Попробовать найти JSON
-    match = re.search(r"\{[^}]+\}", text)
-    if match:
-        try:
-            data = json.loads(match.group())
-            cat = data.get("cat")
-            if isinstance(cat, int) and 1 <= cat <= 14:
-                return {"cat": cat}
-        except json.JSONDecodeError:
-            pass
-    return None
+    if not response:
+        return {}
+
+    cleaned = re.sub(r"```(?:json)?\s*", "", response).strip().rstrip("`").strip()
+    data = None
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if match:
+            try:
+                data = json.loads(match.group())
+            except json.JSONDecodeError:
+                return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    expected_keys = {normalize_key(a) for a in expected}
+    result: dict[str, int] = {}
+    for answer, cat_num in data.items():
+        key = normalize_key(str(answer))
+        if key not in expected_keys:
+            continue
+        if isinstance(cat_num, int):
+            num = cat_num
+        elif isinstance(cat_num, str) and cat_num.strip().isdigit():
+            num = int(cat_num.strip())
+        else:
+            continue
+        if 1 <= num <= NUM_CATEGORIES:
+            result[key] = num
+
+    return result
+
+
+def classify_batch(provider, answers: list[str], prompt: str) -> dict[str, int]:
+    """Классифицировать батч ответов."""
+    numbered = "\n".join(f"{i+1}. {a}" for i, a in enumerate(answers))
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": f"Классифицируй эти ответы ЧГК:\n\n{numbered}"},
+    ]
+    response = provider.chat(messages, max_tokens=2000)
+    return parse_batch_response(response, answers)
+
+
+def classify_batch_with_context(
+    provider, answers: list[str], contexts: dict[str, list[str]]
+) -> dict[str, int]:
+    """Классифицировать с контекстом вопросов."""
+    lines = []
+    for i, answer in enumerate(answers):
+        lines.append(f"{i+1}. {answer}")
+        ctx = contexts.get(normalize_key(answer), [])
+        for q in ctx[:2]:
+            lines.append(f'   - "{q}"')
+
+    messages = [
+        {"role": "system", "content": CONTEXT_PROMPT},
+        {"role": "user", "content": f"Классифицируй ответы ЧГК:\n\n" + "\n".join(lines)},
+    ]
+    response = provider.chat(messages, max_tokens=2000)
+    return parse_batch_response(response, answers)
+
+
+def load_question_contexts(answer_questions: dict, max_per: int = 2) -> dict[str, list[str]]:
+    """Загрузить тексты вопросов из БД."""
+    import sqlite3
+    from config import DB_PATH
+
+    if not answer_questions:
+        return {}
+
+    conn = sqlite3.connect(str(DB_PATH))
+    contexts: dict[str, list[str]] = {}
+    for answer, qids in answer_questions.items():
+        sample = qids[:max_per]
+        if not sample:
+            continue
+        ph = ",".join("?" * len(sample))
+        rows = conn.execute(
+            f"SELECT text FROM questions WHERE id IN ({ph})", sample
+        ).fetchall()
+        texts = [r[0][:200] for r in rows if r[0]]
+        if texts:
+            contexts[normalize_key(answer)] = texts
+
+    conn.close()
+    return contexts
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Классификация сущностей в 14 тематических категорий ЧГК"
+        description="Классификация топ-ответов ЧГК в 14 тематических категорий"
     )
-    parser.add_argument(
-        "--provider", default="openrouter",
-        help="Провайдер LLM (default: openrouter)",
-    )
-    parser.add_argument(
-        "--model", default="qwen/qwen-2.5-72b-instruct",
-        help="Модель (default: qwen/qwen-2.5-72b-instruct)",
-    )
-    parser.add_argument(
-        "--limit", type=int, default=None,
-        help="Макс. сущностей для классификации",
-    )
-    parser.add_argument(
-        "--force", action="store_true",
-        help="Перезаписать уже классифицированные",
-    )
+    parser.add_argument("--provider", default="openrouter")
+    parser.add_argument("--model", default="openai/gpt-4.1-mini")
+    parser.add_argument("--top", type=int, default=1500)
+    parser.add_argument("--batch-size", type=int, default=40)
+    parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
-    # Загрузить данные
-    cat_path = DATA_DIR / "categorized_answers.json"
-    if not cat_path.exists():
-        print(f"Файл не найден: {cat_path}")
-        sys.exit(1)
+    # Загрузить top_answers
+    top_path = DATA_DIR / "top_answers.json"
+    if not top_path.exists():
+        print("top_answers.json не найден. Запустите: python scripts/analyze_answers.py")
+        return
 
-    cat_data = json.loads(cat_path.read_text(encoding="utf-8"))
-    categories = cat_data.get("categories", {})
-    display_forms = cat_data.get("display_forms", {})
+    top_data = json.loads(top_path.read_text(encoding="utf-8"))
+    all_answers = top_data["top_answers"][:args.top]
+    display_forms = top_data.get("display_forms", {})
+    answer_questions = top_data.get("answer_questions", {})
 
-    # Загрузить Wikipedia-описания
-    enriched = {}
-    enriched_path = DATA_DIR / "enriched_entities.json"
-    if enriched_path.exists():
-        enriched = json.loads(enriched_path.read_text(encoding="utf-8")).get("entities", {})
-
-    # Собрать все сущности
-    entities = []
-    for entity_type, items in categories.items():
-        for key, freq in items:
-            entities.append({
-                "key": key,
-                "display": display_forms.get(key, key),
-                "type": entity_type,
-                "frequency": freq,
-                "description": enriched.get(key, {}).get("short_description", ""),
-            })
+    print(f"Загружено ответов: {len(all_answers)}")
 
     # Загрузить существующий маппинг
-    existing_themes = {}
-    if OUTPUT_PATH.exists():
+    existing_themes: dict[str, dict] = {}
+    if OUTPUT_PATH.exists() and not args.force:
         existing_data = json.loads(OUTPUT_PATH.read_text(encoding="utf-8"))
         existing_themes = existing_data.get("entity_themes", {})
 
-    # Фильтровать уже классифицированные
-    if not args.force:
-        entities = [e for e in entities if e["key"] not in existing_themes]
+    # Определить что нужно классифицировать
+    to_classify: list[tuple[str, int]] = []  # (norm_key, freq)
+    already_done = 0
+    for norm_key, freq in all_answers:
+        if norm_key in existing_themes:
+            already_done += 1
+        else:
+            to_classify.append((norm_key, freq))
 
-    if args.limit:
-        entities = entities[:args.limit]
+    print(f"Уже классифицировано: {already_done}")
+    print(f"Осталось: {len(to_classify)}")
 
-    total = len(entities)
-    print(f"\n{'═' * 60}")
-    print(f"  Классификация сущностей в 14 категорий ЧГК")
-    print(f"{'═' * 60}")
-    print(f"  Модель:    {args.model}")
-    print(f"  Сущностей: {total}")
-    print(f"  Force:     {args.force}")
-    print(f"  Уже есть:  {len(existing_themes)}")
-    print(f"{'═' * 60}\n")
-
-    if total == 0:
-        print("Нет сущностей для классификации.")
+    if not to_classify:
+        print("Все ответы уже классифицированы.")
+        _save(existing_themes, args.model, all_answers, display_forms)
         return
+
+    # Загрузить контексты
+    contexts = load_question_contexts(answer_questions)
+    if contexts:
+        print(f"Контексты вопросов: {len(contexts)}")
 
     # Создать провайдер
     from classifier.providers import create_provider
     provider = create_provider(args.provider, model=args.model)
+    print(f"Провайдер: {args.provider}, модель: {args.model}")
 
-    # Маппинг номер → название категории
-    cat_names = {i: name_ru for i, (_, name_ru, _) in enumerate(TAXONOMY, 1)}
+    n_batches = (len(to_classify) + args.batch_size - 1) // args.batch_size
+    if provider.config.cost_per_1m_input > 0:
+        # 2 прохода максимум
+        est = provider.estimate_total_cost(
+            n_batches * 2, avg_input_tokens=800, avg_output_tokens=400
+        )
+        print(f"Оценка стоимости: ${est:.4f} ({n_batches} батчей)")
 
+    themes = dict(existing_themes)
     classified = 0
-    errors = 0
-    themes = dict(existing_themes)  # копия
+    failed = 0
 
     try:
-        for i, ent in enumerate(entities):
-            messages = build_messages(ent["display"], ent["type"], ent["description"])
+        for batch_idx in range(n_batches):
+            start = batch_idx * args.batch_size
+            end = min(start + args.batch_size, len(to_classify))
+            batch = to_classify[start:end]
 
-            print(f"  [{i+1}/{total}] {ent['display']:30s} ", end="", flush=True)
+            # Используем display forms для LLM
+            batch_displays = [display_forms.get(norm, norm) for norm, _ in batch]
 
-            try:
-                response = provider.chat(messages, max_tokens=30)
-            except Exception as e:
-                errors += 1
-                print(f"ОШИБКА: {e}")
-                continue
+            print(f"\n  Батч {batch_idx+1}/{n_batches} ({len(batch)} ответов)...", end=" ", flush=True)
 
-            if not response:
-                errors += 1
-                print("пустой ответ")
-                continue
+            # 1-й проход
+            result = classify_batch(provider, batch_displays, BATCH_PROMPT)
 
-            parsed = parse_response(response)
-            if not parsed:
-                errors += 1
-                print(f"не распарсился: {response[:50]}")
-                continue
+            assigned = 0
+            unresolved: list[tuple[str, str]] = []
+            for norm_key, _ in batch:
+                display = display_forms.get(norm_key, norm_key)
+                # Ищем по обоим ключам
+                cat_num = result.get(normalize_key(display)) or result.get(normalize_key(norm_key))
+                if cat_num:
+                    themes[norm_key] = {
+                        "category_num": cat_num,
+                        "category": CAT_NAMES.get(cat_num, "?"),
+                    }
+                    assigned += 1
+                else:
+                    unresolved.append((norm_key, display))
 
-            cat_num = parsed["cat"]
-            cat_name = cat_names.get(cat_num, "?")
+            # 2-й проход с контекстом для неразрешённых
+            assigned_ctx = 0
+            if unresolved and contexts:
+                ctx_displays = [d for _, d in unresolved]
+                ctx_result = classify_batch_with_context(provider, ctx_displays, contexts)
 
-            themes[ent["key"]] = {
-                "category_num": cat_num,
-                "category": cat_name,
-                "entity_type": ent["type"],
-                "confidence": 1.0,
-            }
-            classified += 1
-            print(f"→ {cat_name}")
+                still_failed = []
+                for norm_key, display in unresolved:
+                    cat_num = ctx_result.get(normalize_key(display)) or ctx_result.get(normalize_key(norm_key))
+                    if cat_num:
+                        themes[norm_key] = {
+                            "category_num": cat_num,
+                            "category": CAT_NAMES.get(cat_num, "?"),
+                        }
+                        assigned_ctx += 1
+                    else:
+                        still_failed.append(norm_key)
+                failed += len(still_failed)
+            else:
+                failed += len(unresolved)
 
-            # Промежуточное сохранение каждые 30
-            if classified % 30 == 0:
-                _save(themes, cat_names, args.model)
+            classified += assigned + assigned_ctx
+            skip = len(batch) - assigned - assigned_ctx
+            print(f"1-й: {assigned}, контекст: {assigned_ctx}, пропущено: {skip}")
+
+            # Сохранение каждые 5 батчей
+            if (batch_idx + 1) % 5 == 0:
+                _save(themes, args.model, all_answers, display_forms)
 
     except KeyboardInterrupt:
-        print("\n\nПрервано. Сохраняю прогресс...")
+        print("\n\nПрервано. Сохраняю...")
 
-    # Финальное сохранение
-    _save(themes, cat_names, args.model)
+    _save(themes, args.model, all_answers, display_forms)
 
-    print(f"\n{'═' * 60}")
-    print(f"  ОТЧЁТ")
-    print(f"{'═' * 60}")
-    print(f"  Классифицировано: {classified}")
-    print(f"  Ошибок:           {errors}")
-    print(f"  Всего в маппинге: {len(themes)}")
-    print(f"  Стоимость:        ${provider.estimated_cost:.4f}")
-    print(f"{'═' * 60}")
-    print(f"  Файл: {OUTPUT_PATH}")
+    print(f"\n{'=' * 50}")
+    print(f"Классифицировано: {classified}")
+    print(f"Пропущено: {failed}")
+    print(f"Всего в маппинге: {len(themes)}")
+    if hasattr(provider, 'estimated_cost'):
+        print(f"Стоимость: ${provider.estimated_cost:.4f}")
+    print(f"{'=' * 50}")
 
-    # Распределение по категориям
-    from collections import Counter
     dist = Counter(t["category"] for t in themes.values())
-    print(f"\n  Распределение:")
-    for cat_name, cnt in dist.most_common():
-        print(f"    {cat_name:30s} {cnt}")
+    print(f"\nРаспределение:")
+    for cat, cnt in dist.most_common():
+        print(f"  {cat:30s} {cnt}")
 
 
-def _save(themes: dict, cat_names: dict, model: str):
+def _save(themes: dict, model: str, all_answers: list, display_forms: dict):
     """Сохранить thematic_mapping.json."""
-    # Построить by_category
-    by_category = {}
+    by_category: dict[str, list] = {}
     for key, theme in themes.items():
-        cat_name = theme["category"]
-        if cat_name not in by_category:
-            by_category[cat_name] = []
-        by_category[cat_name].append(key)
+        cat = theme["category"]
+        by_category.setdefault(cat, []).append(key)
 
     output = {
         "generated_at": datetime.now().isoformat(),
@@ -260,6 +321,7 @@ def _save(themes: dict, cat_names: dict, model: str):
         "total_entities": len(themes),
         "entity_themes": themes,
         "by_category": by_category,
+        "display_forms": display_forms,
     }
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(

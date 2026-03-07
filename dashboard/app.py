@@ -855,30 +855,16 @@ elif page == "Джентльменский набор":
         view = st.radio("Режим", sub_views, horizontal=True, key="answers_view")
 
         if view == "По категориям":
-            cat_data = json.loads(
-                (data_dir / "categorized_answers.json").read_text(encoding="utf-8")
-            )
             top_data = json.loads(
                 (data_dir / "top_answers.json").read_text(encoding="utf-8")
             )
 
-            display_forms = {
-                **top_data.get("display_forms", {}),
-                **cat_data.get("display_forms", {}),
-            }
+            display_forms = top_data.get("display_forms", {})
             answer_questions = top_data.get("answer_questions", {})
             pack_counts = top_data.get("pack_counts", {})
 
-            cat_meta = cat_data.get("meta", {})
-            st.sidebar.markdown(f"Модель: {cat_data.get('model', '?')}")
-            st.sidebar.markdown(f"Категоризировано: {cat_data.get('total_categorized', 0)}")
-            if cat_meta.get("whitelist_categorized"):
-                st.sidebar.markdown(f"  whitelist: {cat_meta['whitelist_categorized']}")
-            if cat_meta.get("llm_categorized"):
-                st.sidebar.markdown(f"  LLM: {cat_meta['llm_categorized']}")
-
-            raw_categories = cat_data.get("categories", {})
-            categories = _normalize_gentleman_categories(raw_categories)
+            # Частоты из top_answers (ключ → частота)
+            freq_map = {k: f for k, f in top_data.get("top_answers", [])}
 
             # Загрузить описания из Wikipedia (если есть)
             enriched_path = data_dir / "enriched_entities.json"
@@ -894,27 +880,24 @@ elif page == "Джентльменский набор":
                 thematic_data = json.loads(thematic_path.read_text(encoding="utf-8"))
 
             if thematic_data:
-                # ── 14 тематических вкладок ──
                 entity_themes = thematic_data.get("entity_themes", {})
-                # Собрать данные по 14 категориям
+                thematic_display = thematic_data.get("display_forms", {})
+                display_forms = {**display_forms, **thematic_display}
+
+                st.sidebar.markdown(f"Модель: {thematic_data.get('model', '?')}")
+                st.sidebar.markdown(f"Классифицировано: {thematic_data.get('total_entities', 0)}")
+
                 from database.seed_taxonomy import TAXONOMY
                 cat_order_14 = [name_ru for _, name_ru, _ in TAXONOMY]
                 thematic_categories = {name: [] for name in cat_order_14}
+
                 for key, theme in entity_themes.items():
                     cat_name = theme.get("category", "")
                     if cat_name in thematic_categories:
-                        # Найти частоту из categories
-                        freq = 0
-                        for etype_items in categories.values():
-                            for k, f in etype_items:
-                                if k == key:
-                                    freq = f
-                                    break
-                            if freq:
-                                break
+                        freq = freq_map.get(key, 0)
                         if freq >= min_freq:
                             thematic_categories[cat_name].append([key, freq])
-                # Сортировать по частоте
+
                 for cat_name in thematic_categories:
                     thematic_categories[cat_name].sort(key=lambda x: x[1], reverse=True)
 
@@ -945,28 +928,8 @@ elif page == "Джентльменский набор":
                                 enriched_data=enriched_data,
                             )
             else:
-                # Fallback: 6 вкладок по типу сущности
-                cat_cols = st.columns(len(GENTLEMAN_CATEGORY_ORDER))
-                for col, cat_name in zip(cat_cols, GENTLEMAN_CATEGORY_ORDER):
-                    items = categories.get(cat_name, [])
-                    col.metric(cat_name, len(items))
-
-                tab_names = [name for name in GENTLEMAN_CATEGORY_ORDER if categories.get(name)]
-                if not tab_names:
-                    st.info("Нет категоризированных данных")
-                else:
-                    tabs = st.tabs(tab_names)
-                    for tab, cat_name in zip(tabs, tab_names):
-                        with tab:
-                            color = GENTLEMAN_CATEGORY_COLORS.get(cat_name, "#666666")
-                            _show_tab(
-                                categories[cat_name],
-                                "Ответ", "Вопросов",
-                                f"Топ: {cat_name}", color,
-                                answer_questions, display_forms,
-                                pack_counts=pack_counts,
-                                enriched_data=enriched_data,
-                            )
+                st.info("Тематический маппинг не найден. Запустите:\n\n"
+                        "`python scripts/classify_gentleman_entities.py --force`")
 
         elif view == "Все ответы":
             top_data = json.loads(

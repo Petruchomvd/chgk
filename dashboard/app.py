@@ -773,6 +773,11 @@ elif page == "Джентльменский набор":
                 f"В категории доступно {shown_n} элементов при текущей "
                 f"минимальной частоте ({min_freq})."
             )
+        elif len(df) > top_n:
+            st.caption(
+                f"Показано {top_n} из {len(df)} элементов. "
+                f"Увеличьте «Показать топ-N» для просмотра всех."
+            )
 
         col_chart, col_table = st.columns([2, 1])
         with col_chart:

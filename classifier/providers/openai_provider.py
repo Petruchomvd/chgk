@@ -28,14 +28,21 @@ class OpenAIProvider(BaseLLMProvider):
 
     def _chat_impl(self, messages: list, max_tokens: int) -> Optional[str]:
         client = self._get_client()
-        resp = client.chat.completions.create(
+        kwargs = dict(
             model=self.config.model,
             messages=messages,
             response_format={"type": "json_object"},
             temperature=self.config.temperature,
             max_tokens=max_tokens,
         )
-        content = resp.choices[0].message.content.strip()
+        # Disable thinking mode for Qwen3 models (OpenRouter)
+        if "qwen3" in self.config.model.lower() or "qwen-3" in self.config.model.lower():
+            kwargs["extra_body"] = {"reasoning": {"effort": "none"}}
+        resp = client.chat.completions.create(**kwargs)
+        content = resp.choices[0].message.content
+        if content is None:
+            raise RuntimeError("Model returned empty content (None)")
+        content = content.strip()
 
         if resp.usage:
             self._track_tokens(resp.usage.prompt_tokens, resp.usage.completion_tokens)

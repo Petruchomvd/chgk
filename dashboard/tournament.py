@@ -23,6 +23,7 @@ from dashboard.db_queries import (
     top_categories,
     tournament_combined_categories,
     tournament_per_author_stats,
+    tournament_raw_answers,
     tournament_top_answers,
 )
 from dashboard.training_queries import (
@@ -500,11 +501,76 @@ def _tab_questions(conn, model_filter):
 #  Таб 6: Джентльменский набор
 # ══════════════════════════════════════════════════════════════════
 
+@st.cache_data(ttl=600, show_spinner="Анализ ответов авторов турнира...")
+def _compute_tournament_gentleman(_conn_id, authors: tuple):
+    """Подсчёт частотности ответов авторов с лемматизацией.
+
+    Использует тот же пайплайн, что и глобальный ДН:
+    clean_answer → split_answer → normalize_answer_key → low_info_filter.
+    """
+    import sqlite3
+    from collections import Counter
+
+    from scripts.analyze_answers import (
+        clean_answer,
+        low_info_reason,
+        normalize_answer_key,
+        split_answer,
+    )
+
+    conn = sqlite3.connect(str(_conn_id))
+    conn.row_factory = sqlite3.Row
+    raw = tournament_raw_answers(conn, list(authors))
+    conn.close()
+
+    answer_counter = Counter()
+    original_forms: dict[str, Counter] = {}
+    global_text_parts: dict[str, list[str]] = {}
+
+    for row in raw:
+        # Извлекаем сущности из ответа
+        for part in split_answer(clean_answer(row["answer"])):
+            if not part:
+                continue
+            normalized = normalize_answer_key(part)
+            if not normalized or low_info_reason(normalized):
+                continue
+            answer_counter[normalized] += 1
+            original_forms.setdefault(normalized, Counter())[part.strip()] += 1
+
+        # Собираем контекст (текст + комментарий) для дополнительного матчинга
+        context = ""
+        if row["text"]:
+            context += clean_answer(row["text"]) + " "
+        if row["comment"]:
+            context += clean_answer(row["comment"])
+        if context.strip():
+            for part in split_answer(clean_answer(row["answer"])):
+                norm = normalize_answer_key(part) if part else ""
+                if norm and not low_info_reason(norm):
+                    global_text_parts.setdefault(norm, []).append(context.strip())
+
+    # Display form: самый частый вариант написания
+    display_forms = {}
+    for norm, forms in original_forms.items():
+        display_forms[norm] = forms.most_common(1)[0][0]
+
+    results = []
+    for norm, cnt in answer_counter.most_common(500):
+        results.append({
+            "answer": norm,
+            "display": display_forms.get(norm, norm),
+            "count": cnt,
+        })
+
+    return results
+
+
 def _tab_gentleman(conn, project_root: Path):
     import json
 
     st.subheader("Джентльменский набор авторов турнира")
-    st.caption("Частые ответы в вопросах авторов IQ ПФО + описания из Wikipedia")
+    st.caption("Частые ответы в вопросах авторов IQ ПФО + описания из Wikipedia (с лемматизацией)")
 
     data_dir = project_root / "data" / "gentleman_set"
 
@@ -527,7 +593,7 @@ def _tab_gentleman(conn, project_root: Path):
         enriched_raw = json.loads(enriched_path.read_text(encoding="utf-8"))
         enriched = enriched_raw.get("entities", {})
 
-    # Загрузить глобальные частоты
+    # Загрузить глобальные частоты (они тоже лемматизированы)
     global_freq = {}
     top_path = data_dir / "top_answers.json"
     if top_path.exists():
@@ -539,25 +605,23 @@ def _tab_gentleman(conn, project_root: Path):
     with col_freq:
         min_freq = st.slider("Мин. частота (в турнире)", 1, 10, 2, key="tg_min_freq")
     with col_cat:
-        # Собрать список уникальных категорий из данных
         unique_cats = sorted(set(answer_category.values())) if answer_category else []
         cat_filter_options = ["Все"] + unique_cats
         cat_filter = st.selectbox("Категория", cat_filter_options, key="tg_cat_filter")
 
-    # Получить турнирные ответы из БД
-    answers = tournament_top_answers(conn, IQ_PFO_AUTHORS, min_freq=min_freq, top_n=200)
-
-    if not answers:
-        st.info("Нет часто повторяющихся ответов у авторов турнира")
-        return
+    # Получить турнирные ответы с лемматизацией (кешируется)
+    db_path = str(project_root / "chgk_analysis.db")
+    all_answers = _compute_tournament_gentleman(db_path, tuple(IQ_PFO_AUTHORS))
 
     # Собрать таблицу
     rows = []
-    for a in answers:
+    for a in all_answers:
+        if a["count"] < min_freq:
+            continue
+
         key = a["answer"]
         category = answer_category.get(key, "—")
 
-        # Фильтр по категории
         if cat_filter != "Все" and category != cat_filter:
             continue
 

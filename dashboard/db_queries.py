@@ -756,3 +756,32 @@ def tournament_top_answers(
             "count": r["cnt"],
         })
     return result
+
+
+def tournament_raw_answers(
+    conn: sqlite3.Connection,
+    authors: List[str],
+) -> List[Dict]:
+    """Сырые ответы (+ текст, комментарий) вопросов авторов турнира.
+
+    Returns:
+        [{"id": 1, "pack_id": 2, "answer": "...", "text": "...", "comment": "..."}, ...]
+    """
+    author_clause, author_params = _multi_author_filter(authors)
+    rows = conn.execute(f"""
+        SELECT q.id, q.pack_id, q.answer, q.text, q.comment
+        FROM questions q
+        WHERE {author_clause}
+          AND q.answer IS NOT NULL AND TRIM(q.answer) != ''
+    """, author_params).fetchall()
+
+    return [
+        {
+            "id": r["id"],
+            "pack_id": r["pack_id"],
+            "answer": r["answer"],
+            "text": r["text"] or "",
+            "comment": r["comment"] or "",
+        }
+        for r in rows
+    ]

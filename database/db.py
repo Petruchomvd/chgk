@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 _THIS_DIR = Path(__file__).parent
 SCHEMA_PATH = _THIS_DIR / "schema.sql"
+TG_SCHEMA_PATH = _THIS_DIR / "tg_schema.sql"
 
 
 def get_connection(db_path: str | Path) -> sqlite3.Connection:
@@ -16,6 +17,11 @@ def get_connection(db_path: str | Path) -> sqlite3.Connection:
     schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
     conn.executescript(schema_sql)
     conn.commit()
+
+    if TG_SCHEMA_PATH.exists():
+        tg_sql = TG_SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(tg_sql)
+        conn.commit()
 
     _migrate_question_topics(conn)
     _migrate_question_difficulty(conn)
@@ -186,57 +192,70 @@ def get_unclassified_questions(
     random_order: bool = True,
     author_filter: Optional[str] = None,
     source_model: Optional[str] = None,
+    question_author: Optional[str] = None,
+    year: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Получить вопросы для классификации.
 
     Уже классифицированные данной моделью пропускаются.
     random_order=True — случайный порядок (равномерное покрытие пакетов).
     random_order=False — по ID (для детерминистичного сравнения моделей).
-    author_filter — фильтр по имени автора пакета (LIKE '%<author_filter>%').
-    source_model — только вопросы, уже классифицированные этой моделью (для сравнения).
+    author_filter — фильтр по автору пакета p.authors (LIKE '%..%').
+    question_author — фильтр по автору вопроса q.authors (LIKE '%..%').
+    source_model — только вопросы, уже классифицированные этой моделью.
+    year — фильтр по году пакета (p.start_date).
     """
     order = "RANDOM()" if random_order else "q.id"
 
-    author_join = "JOIN packs p ON q.pack_id = p.id" if author_filter else ""
-    author_where = "AND p.authors LIKE ?" if author_filter else ""
+    need_pack_join = bool(author_filter or year)
+    pack_join = "JOIN packs p ON q.pack_id = p.id" if need_pack_join else ""
 
-    # Фильтр по source_model: берём только вопросы, которые уже классифицировал source_model
-    source_where = (
-        "AND q.id IN (SELECT DISTINCT question_id FROM question_topics WHERE model_name = ?)"
-        if source_model else ""
-    )
+    extra_where = []
+    extra_params: list = []
+
+    if author_filter:
+        extra_where.append("p.authors LIKE ?")
+        extra_params.append(f"%{author_filter}%")
+    if question_author:
+        extra_where.append("q.authors LIKE ?")
+        extra_params.append(f"%{question_author}%")
+    if year:
+        if not need_pack_join:
+            pack_join = "JOIN packs p ON q.pack_id = p.id"
+        extra_where.append("p.start_date >= ? AND p.start_date < ?")
+        extra_params.extend([f"{year}-01-01", f"{year + 1}-01-01"])
+    if source_model:
+        extra_where.append(
+            "q.id IN (SELECT DISTINCT question_id FROM question_topics WHERE model_name = ?)"
+        )
+        extra_params.append(source_model)
+
+    extra_sql = (" AND " + " AND ".join(extra_where)) if extra_where else ""
 
     if model_name:
         sql = f"""
             SELECT q.id, q.text, q.answer, q.comment
             FROM questions q
-            {author_join}
+            {pack_join}
             WHERE q.id NOT IN (
                 SELECT DISTINCT question_id FROM question_topics WHERE model_name = ?
             )
-            {source_where}
-            {author_where}
+            {extra_sql}
             ORDER BY {order}
         """
-        params: list = [model_name]
+        params: list = [model_name] + extra_params
     else:
         sql = f"""
             SELECT q.id, q.text, q.answer, q.comment
             FROM questions q
-            {author_join}
+            {pack_join}
             WHERE q.id NOT IN (
                 SELECT DISTINCT question_id FROM question_topics
             )
-            {source_where}
-            {author_where}
+            {extra_sql}
             ORDER BY {order}
         """
-        params = []
-
-    if source_model:
-        params.append(source_model)
-    if author_filter:
-        params.append(f"%{author_filter}%")
+        params = extra_params
 
     if limit:
         sql += " LIMIT ?"

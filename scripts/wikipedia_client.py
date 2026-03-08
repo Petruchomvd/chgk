@@ -79,25 +79,38 @@ class WikipediaClient:
             print(f"  [wiki] Ошибка поиска '{query}': {e}")
             return None
 
-    def get_extract(self, title: str, chars: int = 2000) -> Optional[str]:
-        """Получить вводную часть статьи (plaintext)."""
+    def get_extract(self, title: str, chars: int = 2000, intro_only: bool = True) -> Optional[str]:
+        """Получить текст статьи (plaintext).
+
+        Args:
+            title: Название статьи.
+            chars: Максимум символов (обрезается в Python; API exchars макс 1200).
+            intro_only: Если True — только вступление, если False — полная статья.
+        """
         self._rate_limit()
         try:
-            resp = self.session.get(WIKI_API, params={
+            params = {
                 "action": "query",
                 "titles": title,
                 "prop": "extracts",
-                "exintro": 1,
                 "explaintext": 1,
-                "exchars": chars,
                 "format": "json",
-            }, timeout=10)
+            }
+            if intro_only:
+                params["exintro"] = 1
+            # exchars max is 1200, so for longer texts we fetch full and truncate
+            if chars <= 1200:
+                params["exchars"] = chars
+            resp = self.session.get(WIKI_API, params=params, timeout=10)
             resp.raise_for_status()
             pages = resp.json().get("query", {}).get("pages", {})
             for page_id, page in pages.items():
                 if page_id == "-1":
                     return None
-                return page.get("extract", "")
+                text = page.get("extract", "")
+                if chars and len(text) > chars:
+                    text = text[:chars]
+                return text
             return None
         except Exception as e:
             print(f"  [wiki] Ошибка extract '{title}': {e}")

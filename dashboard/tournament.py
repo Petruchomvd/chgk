@@ -13,6 +13,7 @@ from dashboard.components import (
     category_bar_chart,
     category_pie_chart,
     comparison_bar_chart,
+    gentleman_bar_chart,
 )
 from dashboard.db_queries import (
     author_categories,
@@ -501,13 +502,9 @@ def _tab_questions(conn, model_filter):
 #  Таб 6: Джентльменский набор
 # ══════════════════════════════════════════════════════════════════
 
-@st.cache_data(ttl=600, show_spinner="Анализ ответов авторов турнира...")
-def _compute_tournament_gentleman(_conn_id, authors: tuple):
-    """Подсчёт частотности ответов авторов с лемматизацией.
-
-    Использует тот же пайплайн, что и глобальный ДН:
-    clean_answer → split_answer → normalize_answer_key → low_info_filter.
-    """
+@st.cache_data(ttl=600, show_spinner="Лемматизация ответов авторов турнира...")
+def _compute_tournament_answers(_conn_id, authors: tuple):
+    """Частотность ответов авторов с лемматизацией (pymorphy3)."""
     import sqlite3
     from collections import Counter
 
@@ -525,10 +522,8 @@ def _compute_tournament_gentleman(_conn_id, authors: tuple):
 
     answer_counter = Counter()
     original_forms: dict[str, Counter] = {}
-    global_text_parts: dict[str, list[str]] = {}
 
     for row in raw:
-        # Извлекаем сущности из ответа
         for part in split_answer(clean_answer(row["answer"])):
             if not part:
                 continue
@@ -538,43 +533,86 @@ def _compute_tournament_gentleman(_conn_id, authors: tuple):
             answer_counter[normalized] += 1
             original_forms.setdefault(normalized, Counter())[part.strip()] += 1
 
-        # Собираем контекст (текст + комментарий) для дополнительного матчинга
-        context = ""
+    display_forms = {
+        norm: forms.most_common(1)[0][0]
+        for norm, forms in original_forms.items()
+    }
+
+    return [
+        {"answer": norm, "display": display_forms.get(norm, norm), "count": cnt}
+        for norm, cnt in answer_counter.most_common(500)
+    ]
+
+
+@st.cache_data(ttl=600, show_spinner="NER по контексту вопросов авторов (~30 сек)...")
+def _compute_tournament_context_ner(_conn_id, authors: tuple):
+    """Именованные сущности из полного контекста (вопрос + ответ + комментарий)."""
+    import sqlite3
+    from collections import Counter
+
+    from scripts.analyze_answers import (
+        clean_answer,
+        extract_entities,
+        low_info_reason,
+        normalize_answer_key,
+    )
+
+    conn = sqlite3.connect(str(_conn_id))
+    conn.row_factory = sqlite3.Row
+    raw = tournament_raw_answers(conn, list(authors))
+    conn.close()
+
+    fragments: list[tuple[int, str]] = []
+    for row in raw:
+        parts = []
         if row["text"]:
-            context += clean_answer(row["text"]) + " "
+            parts.append(clean_answer(row["text"]))
+        parts.append(clean_answer(row["answer"]))
         if row["comment"]:
-            context += clean_answer(row["comment"])
-        if context.strip():
-            for part in split_answer(clean_answer(row["answer"])):
-                norm = normalize_answer_key(part) if part else ""
-                if norm and not low_info_reason(norm):
-                    global_text_parts.setdefault(norm, []).append(context.strip())
+            parts.append(clean_answer(row["comment"]))
+        fragments.append((row["id"], " ".join(parts)))
 
-    # Display form: самый частый вариант написания
-    display_forms = {}
-    for norm, forms in original_forms.items():
-        display_forms[norm] = forms.most_common(1)[0][0]
+    ner_data = extract_entities(fragments)
 
-    results = []
-    for norm, cnt in answer_counter.most_common(500):
-        results.append({
+    ner_counter = Counter()
+    original_forms: dict[str, Counter] = {}
+    entity_types: dict[str, str] = {}
+
+    for entity_type in ("PER", "LOC", "ORG"):
+        for name, cnt in ner_data.get(entity_type, []):
+            norm = normalize_answer_key(name)
+            if not norm or low_info_reason(norm):
+                continue
+            ner_counter[norm] += cnt
+            original_forms.setdefault(norm, Counter())[name] += cnt
+            # Запоминаем тип с наибольшим количеством
+            if norm not in entity_types or cnt > ner_counter.get(norm, 0):
+                entity_types[norm] = entity_type
+
+    display_forms = {
+        norm: forms.most_common(1)[0][0]
+        for norm, forms in original_forms.items()
+    }
+
+    type_labels = {"PER": "Персона", "LOC": "Место", "ORG": "Организация"}
+
+    return [
+        {
             "answer": norm,
             "display": display_forms.get(norm, norm),
             "count": cnt,
-        })
+            "type": type_labels.get(entity_types.get(norm, ""), ""),
+        }
+        for norm, cnt in ner_counter.most_common(500)
+    ]
 
-    return results
 
-
-def _tab_gentleman(conn, project_root: Path):
+def _load_gentleman_data(project_root: Path):
+    """Загрузить глобальные данные ДН (категории, описания, частоты)."""
     import json
-
-    st.subheader("Джентльменский набор авторов турнира")
-    st.caption("Частые ответы в вопросах авторов IQ ПФО + описания из Wikipedia (с лемматизацией)")
 
     data_dir = project_root / "data" / "gentleman_set"
 
-    # Загрузить тематический маппинг (14 категорий) или fallback на 6 типов
     answer_category = {}
     thematic_path = data_dir / "thematic_mapping.json"
     categorized_path = data_dir / "categorized_answers.json"
@@ -586,36 +624,26 @@ def _tab_gentleman(conn, project_root: Path):
         cat_data = json.loads(categorized_path.read_text(encoding="utf-8"))
         answer_category = cat_data.get("answer_category", {})
 
-    # Загрузить описания из Wikipedia (если есть)
     enriched = {}
     enriched_path = data_dir / "enriched_entities.json"
     if enriched_path.exists():
         enriched_raw = json.loads(enriched_path.read_text(encoding="utf-8"))
         enriched = enriched_raw.get("entities", {})
 
-    # Загрузить глобальные частоты (они тоже лемматизированы)
     global_freq = {}
     top_path = data_dir / "top_answers.json"
     if top_path.exists():
         top_data = json.loads(top_path.read_text(encoding="utf-8"))
         global_freq = dict(top_data.get("top_answers", []))
 
-    # Фильтры
-    col_freq, col_cat = st.columns([1, 1])
-    with col_freq:
-        min_freq = st.slider("Мин. частота (в турнире)", 1, 10, 2, key="tg_min_freq")
-    with col_cat:
-        unique_cats = sorted(set(answer_category.values())) if answer_category else []
-        cat_filter_options = ["Все"] + unique_cats
-        cat_filter = st.selectbox("Категория", cat_filter_options, key="tg_cat_filter")
+    return answer_category, enriched, global_freq
 
-    # Получить турнирные ответы с лемматизацией (кешируется)
-    db_path = str(project_root / "chgk_analysis.db")
-    all_answers = _compute_tournament_gentleman(db_path, tuple(IQ_PFO_AUTHORS))
 
-    # Собрать таблицу
+def _gentleman_table(items, min_freq, cat_filter, answer_category, enriched, global_freq,
+                     extra_columns=None):
+    """Построить и отобразить таблицу ДН."""
     rows = []
-    for a in all_answers:
+    for a in items:
         if a["count"] < min_freq:
             continue
 
@@ -629,21 +657,24 @@ def _tab_gentleman(conn, project_root: Path):
         description = ent.get("short_description", "")
         global_cnt = global_freq.get(key, 0)
 
-        rows.append({
-            "Ответ": a["display"],
+        row = {
+            "Сущность": a["display"],
             "Турнир": a["count"],
             "Глобально": global_cnt,
             "Категория": category,
             "Описание": description,
-        })
+        }
+        if extra_columns:
+            for col, field in extra_columns.items():
+                row[col] = a.get(field, "")
+        rows.append(row)
 
     if not rows:
-        st.info("Нет ответов с выбранными фильтрами")
+        st.info("Нет данных с выбранными фильтрами")
         return
 
     df = pd.DataFrame(rows)
-
-    st.metric("Уникальных ответов", len(df))
+    st.metric("Уникальных сущностей", len(df))
     st.dataframe(
         df,
         use_container_width=True,
@@ -652,6 +683,114 @@ def _tab_gentleman(conn, project_root: Path):
             "Описание": st.column_config.TextColumn(width="large"),
         },
     )
+
+
+def _tab_gentleman(conn, project_root: Path):
+    st.subheader("Джентльменский набор авторов турнира")
+
+    answer_category, enriched, global_freq = _load_gentleman_data(project_root)
+
+    db_path = str(project_root / "chgk_analysis.db")
+
+    # Контролы
+    col_freq, col_mode = st.columns([1, 1])
+    with col_freq:
+        min_freq = st.slider("Мин. частота (в турнире)", 1, 10, 2, key="tg_min_freq")
+    with col_mode:
+        top_n_mode = st.radio("Показать", ["Топ-N", "Все"], horizontal=True, key="tg_topn_mode")
+    if top_n_mode == "Топ-N":
+        top_n = st.slider("Показать топ-N", 10, 500, 30, key="tg_topn")
+    else:
+        top_n = 9999
+
+    source = st.radio(
+        "Источник данных",
+        ["По ответам", "По контексту (NER)"],
+        horizontal=True,
+        key="tg_source",
+    )
+
+    if source == "По ответам":
+        answer_items = _compute_tournament_answers(db_path, tuple(IQ_PFO_AUTHORS))
+        st.caption("Частые ответы в вопросах авторов (лемматизация через pymorphy3)")
+    else:
+        answer_items = _compute_tournament_context_ner(db_path, tuple(IQ_PFO_AUTHORS))
+        st.caption("Именованные сущности из вопроса + ответа + комментария (natasha NER)")
+
+    if not answer_category:
+        st.warning("Тематический маппинг не найден.")
+        return
+
+    # Разложить items по 14 категориям
+    from database.seed_taxonomy import TAXONOMY
+    cat_order = [name_ru for _, name_ru, _ in TAXONOMY]
+    by_category: dict[str, list[tuple[str, int, str, int]]] = {c: [] for c in cat_order}
+
+    for item in answer_items:
+        key = item["answer"]
+        cat = answer_category.get(key)
+        if not cat or cat not in by_category:
+            continue
+        if item["count"] < min_freq:
+            continue
+        display = item["display"]
+        global_cnt = global_freq.get(key, 0)
+        by_category[cat].append((key, item["count"], display, global_cnt))
+
+    for cat in by_category:
+        by_category[cat].sort(key=lambda x: x[1], reverse=True)
+
+    # Метрики (2 ряда по 7)
+    row1 = cat_order[:7]
+    row2 = cat_order[7:]
+    cols1 = st.columns(7)
+    for col, name in zip(cols1, row1):
+        col.metric(name, len(by_category.get(name, [])))
+    cols2 = st.columns(7)
+    for col, name in zip(cols2, row2):
+        col.metric(name, len(by_category.get(name, [])))
+
+    tab_names = [n for n in cat_order if by_category.get(n)]
+    if not tab_names:
+        st.info("Нет данных с указанной частотой")
+        return
+
+    tabs = st.tabs(tab_names)
+    for tab, cat_name in zip(tabs, tab_names):
+        with tab:
+            items = by_category[cat_name]
+            shown = items[:top_n]
+
+            if len(items) > top_n:
+                st.caption(f"Показано {top_n} из {len(items)} элементов.")
+
+            # DataFrame: Ответ, Турнир, Глобально, Описание
+            rows = []
+            for key, t_cnt, display, g_cnt in shown:
+                ent = enriched.get(key, {})
+                rows.append({
+                    "Ответ": display,
+                    "Турнир": t_cnt,
+                    "Глобально": g_cnt,
+                    "Описание": ent.get("short_description", ""),
+                })
+            df = pd.DataFrame(rows)
+
+            # График + таблица
+            color = CATEGORY_COLORS.get(cat_name, "#666666")
+            chart_data = [(r["Ответ"], r["Турнир"]) for r in rows]
+            chart_df = pd.DataFrame(chart_data, columns=["Ответ", "Турнир"])
+
+            col_chart, col_table = st.columns([2, 1])
+            with col_chart:
+                fig = gentleman_bar_chart(
+                    chart_df, "Ответ", "Турнир",
+                    f"Топ: {cat_name}", top_n=top_n, color=color,
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            with col_table:
+                st.dataframe(df, use_container_width=True, hide_index=True,
+                             column_config={"Описание": st.column_config.TextColumn(width="large")})
 
 
 # ══════════════════════════════════════════════════════════════════

@@ -95,13 +95,12 @@ def get_conn():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
     return conn
 
 
-if "conn" not in st.session_state:
-    st.session_state.conn = get_conn()
-conn = st.session_state.conn
+# Свежее соединение на каждый rerun — надёжнее, чем кэш в session_state
+# (SQLite connect стоит ~0.1мс, зато нет проблем с stale/closed connections)
+conn = get_conn()
 
 
 # ─── Хелперы ─────────────────────────────────────────────────────
@@ -183,7 +182,10 @@ if section != "Тренировка":
     st.sidebar.markdown("---")
     models = get_available_models(conn)
     model_options = ["Все модели"] + models
-    selected_model = st.sidebar.selectbox("Модель классификации", model_options)
+    # По умолчанию выбираем лучшую откалиброванную модель
+    default_model = "qwen/qwen-2.5-72b-instruct"
+    default_idx = model_options.index(default_model) if default_model in model_options else 0
+    selected_model = st.sidebar.selectbox("Модель классификации", model_options, index=default_idx)
     model_filter = None if selected_model == "Все модели" else selected_model
 
     stats = get_overview_stats(conn, model_filter)
@@ -733,7 +735,11 @@ elif page == "Джентльменский набор":
 
     # Общие контролы
     min_freq = st.slider("Минимальная частота упоминания", 2, 30, 3)
-    top_n = st.slider("Показать топ-N", 10, 100, 30)
+    top_n_mode = st.radio("Показать", ["Топ-N", "Все"], horizontal=True, label_visibility="collapsed")
+    if top_n_mode == "Топ-N":
+        top_n = st.slider("Показать топ-N", 10, 500, 30)
+    else:
+        top_n = 9999  # показать все
 
     def _show_tab(data_list, name_label, count_label, title, color,
                   entity_questions, display_forms=None, pack_counts=None,

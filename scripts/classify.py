@@ -98,6 +98,19 @@ def main():
         help="Фильтр по автору пакета (подстрока, напр. 'Рождествин')",
     )
     parser.add_argument(
+        "--question-author",
+        type=str,
+        default=None,
+        dest="question_author",
+        help="Фильтр по автору вопроса q.authors (подстрока, напр. 'Соловьёв')",
+    )
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=None,
+        help="Фильтр по году пакета (start_date)",
+    )
+    parser.add_argument(
         "--compare-with",
         type=str,
         default=None,
@@ -108,6 +121,11 @@ def main():
         "--force",
         action="store_true",
         help="Удалить старые классификации модели и переклассифицировать заново",
+    )
+    parser.add_argument(
+        "--reclassify",
+        action="store_true",
+        help="Переклассифицировать уже обработанные вопросы (удалить старые + заново)",
     )
     # Legacy-параметры (обратная совместимость)
     parser.add_argument("--groq", action="store_true", help=argparse.SUPPRESS)
@@ -188,6 +206,9 @@ def main():
         workers=args.workers,
         author_filter=args.author,
         source_model=args.compare_with,
+        question_author=args.question_author,
+        year=args.year,
+        reclassify=args.reclassify,
     )
 
 

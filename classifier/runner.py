@@ -103,6 +103,9 @@ def run_classification(
     workers: int = 1,
     author_filter: str = None,
     source_model: str = None,
+    question_author: str = None,
+    year: int = None,
+    reclassify: bool = False,
 ):
     """Главный цикл классификации.
 
@@ -130,10 +133,28 @@ def run_classification(
     # Ограничить воркеров максимумом провайдера
     workers = min(workers, provider.config.max_concurrent)
 
+    # --reclassify: удалить старые классификации для выбранных вопросов
+    if reclassify:
+        del_sql = "DELETE FROM question_topics WHERE model_name = ?"
+        del_params: list = [model_name]
+        if question_author:
+            del_sql += " AND question_id IN (SELECT id FROM questions WHERE authors LIKE ?)"
+            del_params.append(f"%{question_author}%")
+        if year:
+            del_sql += (" AND question_id IN (SELECT q.id FROM questions q "
+                        "JOIN packs p ON q.pack_id = p.id "
+                        "WHERE p.start_date >= ? AND p.start_date < ?)")
+            del_params.extend([f"{year}-01-01", f"{year + 1}-01-01"])
+        deleted = conn.execute(del_sql, del_params).rowcount
+        conn.commit()
+        if deleted:
+            print(f"[reclassify] Удалено {deleted} старых классификаций")
+
     # Получаем неклассифицированные вопросы ДЛЯ КОНКРЕТНОЙ МОДЕЛИ
     questions = get_unclassified_questions(
         conn, limit=limit, model_name=model_name,
         author_filter=author_filter, source_model=source_model,
+        question_author=question_author, year=year,
     )
     total = len(questions)
     total_in_db = get_question_count(conn)

@@ -57,3 +57,13 @@ GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("CHGK_TG_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("CHGK_TG_CHAT_ID", "")
 TELEGRAM_NOTIFY_INTERVAL = 30 * 60  # 30 минут (в секундах)
+
+# Парсинг Telegram-каналов
+TG_CHANNELS_FILE = PROJECT_ROOT / "data" / "tg_channels.json"
+TG_PARSE_DELAY = 1.5  # секунды между запросами страниц
+TG_MIN_TEXT_LENGTH = 50  # минимальная длина текста поста
+TG_DIGEST_DIR = OUTPUT_DIR / "tg_digest"
+
+# Telegram-бот для дайджестов (постинг в группу с топиками)
+TG_DIGEST_BOT_TOKEN = os.environ.get("TG_DIGEST_BOT_TOKEN", "")
+TG_DIGEST_CHAT_ID = int(os.environ.get("TG_DIGEST_CHAT_ID", "0"))

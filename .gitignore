@@ -7,3 +7,6 @@ __pycache__/
 !chgk_analysis.db
 output/
 venv/
+data/youtube/audio/
+*.mp4
+nul

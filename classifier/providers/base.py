@@ -36,7 +36,7 @@ class BaseLLMProvider(ABC):
         self._last_request_time = 0.0
 
     @abstractmethod
-    def _chat_impl(self, messages: list, max_tokens: int) -> Optional[str]:
+    def _chat_impl(self, messages: list, max_tokens: int, json_mode: bool = True) -> Optional[str]:
         """Отправить запрос к API. Возвращает текст ответа или None."""
         ...
 
@@ -45,8 +45,12 @@ class BaseLLMProvider(ABC):
         """Проверить доступность провайдера (ключ задан, сервер отвечает)."""
         ...
 
-    def chat(self, messages: list, max_tokens: int = None) -> Optional[str]:
-        """Отправить запрос с retry-логикой и rate limiting."""
+    def chat(self, messages: list, max_tokens: int = None, json_mode: bool = True) -> Optional[str]:
+        """Отправить запрос с retry-логикой и rate limiting.
+
+        Args:
+            json_mode: Если True — запрашивать JSON-ответ. Если False — свободный текст.
+        """
         if max_tokens is None:
             max_tokens = self.config.max_tokens
 
@@ -56,17 +60,17 @@ class BaseLLMProvider(ABC):
             if elapsed < self.config.rate_limit_delay:
                 time.sleep(self.config.rate_limit_delay - elapsed)
 
-        result = self._chat_with_retry(messages, max_tokens)
+        result = self._chat_with_retry(messages, max_tokens, json_mode)
         self._last_request_time = time.time()
         self._request_count += 1
         return result
 
-    def _chat_with_retry(self, messages: list, max_tokens: int) -> Optional[str]:
+    def _chat_with_retry(self, messages: list, max_tokens: int, json_mode: bool = True) -> Optional[str]:
         """Retry-обёртка для _chat_impl."""
         delays = self.config.retry_delays
         for attempt in range(len(delays) + 1):
             try:
-                return self._chat_impl(messages, max_tokens)
+                return self._chat_impl(messages, max_tokens, json_mode)
             except Exception as e:
                 if attempt < len(delays):
                     delay = delays[attempt]

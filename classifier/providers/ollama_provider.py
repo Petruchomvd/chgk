@@ -10,7 +10,7 @@ from classifier.providers.base import BaseLLMProvider, ProviderConfig
 class OllamaProvider(BaseLLMProvider):
     """Провайдер для локальных моделей через Ollama."""
 
-    def _chat_impl(self, messages: list, max_tokens: int) -> Optional[str]:
+    def _chat_impl(self, messages: list, max_tokens: int, json_mode: bool = True) -> Optional[str]:
         response = ollama.chat(
             model=self.config.model,
             messages=messages,

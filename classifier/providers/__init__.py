@@ -21,6 +21,7 @@ _PROVIDER_CLASSES = {
     "anthropic": "classifier.providers.anthropic_provider:AnthropicProvider",
     "google": "classifier.providers.google_provider:GoogleProvider",
     "openrouter": "classifier.providers.openai_provider:OpenAIProvider",
+    "gigachat": "classifier.providers.gigachat_provider:GigaChatProvider",
 }
 
 # Пресеты по умолчанию для каждого провайдера
@@ -79,6 +80,15 @@ PROVIDER_PRESETS = {
         "env_key": "OPENROUTER_API_KEY",
         "supports_json_mode": True,
         "base_url": "https://openrouter.ai/api/v1",
+    },
+    "gigachat": {
+        "default_model": "GigaChat",
+        "cost_per_1m_input": 0.0,
+        "cost_per_1m_output": 0.0,
+        "max_concurrent": 1,
+        "rate_limit_delay": 1.0,
+        "env_key": "GIGACHAT_AUTH",
+        "supports_json_mode": False,
     },
 }
 

@@ -93,7 +93,7 @@ class GoogleProvider(BaseLLMProvider):
             self._key_idx = (self._key_idx + 1) % len(self._keys)
             return self._keys[self._key_idx]
 
-    def _chat_impl(self, messages: list, max_tokens: int) -> Optional[str]:
+    def _chat_impl(self, messages: list, max_tokens: int, json_mode: bool = True) -> Optional[str]:
         from google.genai import types
 
         # Извлечь system и собрать contents

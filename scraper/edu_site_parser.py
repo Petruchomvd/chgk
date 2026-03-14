@@ -124,25 +124,43 @@ def generate_facts_from_article(
     source_title: str,
     provider_name: str = "openrouter",
     model: str = None,
+    max_retries: int = 2,
 ) -> Optional[str]:
-    """Извлечь факты из статьи через LLM."""
+    """Извлечь факты из статьи через LLM с retry при JSON-ответе."""
     from classifier.providers import create_provider
     from scripts.wiki_facts import WIKI_FACTS_PROMPT, _clean_facts_response
 
     provider = create_provider(provider_name, model=model)
 
-    messages = [
-        {"role": "system", "content": WIKI_FACTS_PROMPT},
-        {
-            "role": "user",
-            "content": (
-                f"Сущность: {entity_name}\n\n"
-                f"Статья с сайта {source_title}:\n{article_text[:5000]}"
-            ),
-        },
-    ]
+    for attempt in range(max_retries):
+        if attempt == 0:
+            system = WIKI_FACTS_PROMPT
+        else:
+            # На retry — более жёсткий промпт
+            system = (
+                "Выдели 7-10 интересных фактов из текста ниже. "
+                "Ответь ТОЛЬКО нумерованным списком на русском языке. "
+                "НЕ используй JSON. Пример формата:\n"
+                "1. Первый факт.\n2. Второй факт.\n3. Третий факт."
+            )
 
-    raw = provider.chat(messages, max_tokens=1200)
-    if not raw:
-        return None
-    return _clean_facts_response(raw)
+        messages = [
+            {"role": "system", "content": system},
+            {
+                "role": "user",
+                "content": (
+                    f"Сущность: {entity_name}\n\n"
+                    f"Статья с сайта {source_title}:\n{article_text[:5000]}"
+                ),
+            },
+        ]
+
+        raw = provider.chat(messages, max_tokens=1200)
+        if not raw:
+            continue
+
+        result = _clean_facts_response(raw)
+        if result:
+            return result
+
+    return None

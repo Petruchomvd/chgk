@@ -23,6 +23,23 @@ WIKI_CACHE_PATH = GENTLEMAN_SET_DIR / "wiki_cache.json"
 WIKI_HINTS_PATH = GENTLEMAN_SET_DIR / "wiki_hints.json"
 FACTS_CACHE_PATH = GENTLEMAN_SET_DIR / "wiki_facts_cache.json"
 
+# Общие бытовые слова — не интересны для ДН, пропускаем.
+# Оставляем личности, произведения, понятия.
+GENERIC_DENYLIST = {
+    "зеркало", "яблоко", "тень", "борода", "кот", "лев", "роза", "мост",
+    "замок", "конек", "близнец", "язык", "молния", "дом", "дерево", "река",
+    "гора", "море", "луна", "солнце", "звезда", "огонь", "вода", "камень",
+    "кольцо", "корона", "маска", "нож", "ключ", "часы", "лампа", "свеча",
+    "палец", "рука", "глаз", "голова", "сердце", "кровь", "крест", "меч",
+    "щит", "стена", "башня", "мяч", "колесо", "якорь", "цепь", "узел",
+    "нить", "игла", "пуля", "бомба", "флаг", "шляпа", "перо", "крыло",
+    "хвост", "рог", "лапа", "гнездо", "яйцо", "зерно", "цветок", "лист",
+    "корень", "ветка", "трава", "мох", "гриб", "паук", "змея", "волк",
+    "медведь", "орёл", "ворон", "сова", "ёж", "заяц", "лиса", "обезьяна",
+    "слон", "конь", "собака", "кошка", "мышь", "рыба", "кит", "дельфин",
+    "черепаха", "лягушка", "бабочка", "муравей", "пчела", "ворона", "голубь",
+}
+
 WIKI_FACTS_PROMPT = """Ты помогаешь команде ЧГК готовиться к турниру. Извлеки интересные факты из Wikipedia-статьи.
 
 ПРАВИЛА:
@@ -98,12 +115,25 @@ def _clean_facts_response(raw: str) -> str:
     return text
 
 
-def load_entities_by_category(category: str = None) -> Dict[str, dict]:
+def _is_generic(name: str) -> bool:
+    """Проверить, является ли сущность слишком общим бытовым словом."""
+    return name.lower().strip() in GENERIC_DENYLIST
+
+
+def load_entities_by_category(
+    category: str = None, skip_generic: bool = True,
+) -> Dict[str, dict]:
     """Загрузить сущности из thematic_mapping, опционально фильтр по категории."""
     data = json.loads(THEMATIC_PATH.read_text(encoding="utf-8"))
     entities = data["entity_themes"]
     if category:
-        return {k: v for k, v in entities.items() if v["category"] == category}
+        entities = {k: v for k, v in entities.items() if v["category"] == category}
+    if skip_generic:
+        before = len(entities)
+        entities = {k: v for k, v in entities.items() if not _is_generic(k)}
+        skipped = before - len(entities)
+        if skipped:
+            print(f"[Wiki] Пропущено {skipped} общих слов (зеркало, яблоко и т.п.)")
     return entities
 
 
@@ -121,29 +151,46 @@ def save_facts_cache(cache: dict):
     )
 
 
+RETRY_PROMPT = (
+    "Выдели 7-10 интересных фактов из текста ниже. "
+    "Ответь ТОЛЬКО нумерованным списком на русском языке. "
+    "НЕ используй JSON. Пример формата:\n"
+    "1. Первый факт.\n2. Второй факт.\n3. Третий факт."
+)
+
+
 def generate_facts(
     entity_name: str,
     wiki_extract: str,
     provider_name: str = "openrouter",
     model: str = None,
+    max_retries: int = 2,
 ) -> Optional[str]:
-    """Сгенерировать факты через LLM из Wikipedia-статьи."""
+    """Сгенерировать факты через LLM из Wikipedia-статьи с retry."""
     from classifier.providers import create_provider
 
     provider = create_provider(provider_name, model=model)
 
-    messages = [
-        {"role": "system", "content": WIKI_FACTS_PROMPT},
-        {
-            "role": "user",
-            "content": f"Сущность: {entity_name}\n\nСтатья Wikipedia:\n{wiki_extract[:4000]}",
-        },
-    ]
+    for attempt in range(max_retries):
+        system = WIKI_FACTS_PROMPT if attempt == 0 else RETRY_PROMPT
 
-    raw = provider.chat(messages, max_tokens=1200)
-    if not raw:
-        return None
-    return _clean_facts_response(raw)
+        messages = [
+            {"role": "system", "content": system},
+            {
+                "role": "user",
+                "content": f"Сущность: {entity_name}\n\nСтатья Wikipedia:\n{wiki_extract[:4000]}",
+            },
+        ]
+
+        raw = provider.chat(messages, max_tokens=1200)
+        if not raw:
+            continue
+
+        result = _clean_facts_response(raw)
+        if result:
+            return result
+
+    return None
 
 
 def format_post(entity_name: str, category: str, facts: str, wiki_url: str) -> str:
@@ -284,8 +331,12 @@ def main():
         help="LLM-провайдер (default: openrouter)",
     )
     parser.add_argument(
-        "--model", type=str, default=None,
-        help="Модель LLM",
+        "--model", type=str, default="openai/gpt-4o-mini",
+        help="Модель LLM (default: openai/gpt-4o-mini)",
+    )
+    parser.add_argument(
+        "--no-filter", action="store_true",
+        help="Не фильтровать общие бытовые слова",
     )
     parser.add_argument(
         "--post", action="store_true",

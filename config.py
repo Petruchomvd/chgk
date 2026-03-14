@@ -67,3 +67,7 @@ TG_DIGEST_DIR = OUTPUT_DIR / "tg_digest"
 # Telegram-бот для дайджестов (постинг в группу с топиками)
 TG_DIGEST_BOT_TOKEN = os.environ.get("TG_DIGEST_BOT_TOKEN", "")
 TG_DIGEST_CHAT_ID = int(os.environ.get("TG_DIGEST_CHAT_ID", "0"))
+
+# YouTube → транскрибация → факты
+YOUTUBE_AUDIO_DIR = PROJECT_ROOT / "data" / "youtube" / "audio"
+YOUTUBE_TRANSCRIPTS_DIR = PROJECT_ROOT / "data" / "youtube" / "transcripts"

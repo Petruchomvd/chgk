@@ -28,7 +28,7 @@ class AnthropicProvider(BaseLLMProvider):
             self._client = Anthropic(api_key=self.config.api_key)
         return self._client
 
-    def _chat_impl(self, messages: list, max_tokens: int) -> Optional[str]:
+    def _chat_impl(self, messages: list, max_tokens: int, json_mode: bool = True) -> Optional[str]:
         client = self._get_client()
 
         # Извлечь system из сообщений

@@ -26,15 +26,16 @@ class OpenAIProvider(BaseLLMProvider):
             self._client = OpenAI(**kwargs)
         return self._client
 
-    def _chat_impl(self, messages: list, max_tokens: int) -> Optional[str]:
+    def _chat_impl(self, messages: list, max_tokens: int, json_mode: bool = True) -> Optional[str]:
         client = self._get_client()
         kwargs = dict(
             model=self.config.model,
             messages=messages,
-            response_format={"type": "json_object"},
             temperature=self.config.temperature,
             max_tokens=max_tokens,
         )
+        if json_mode and self.config.supports_json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
         # Disable thinking mode for Qwen3 models (OpenRouter)
         if "qwen3" in self.config.model.lower() or "qwen-3" in self.config.model.lower():
             kwargs["extra_body"] = {"reasoning": {"effort": "none"}}

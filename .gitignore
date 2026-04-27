@@ -10,3 +10,5 @@ venv/
 data/youtube/audio/
 *.mp4
 nul
+studies/
+docs/_source_check_*.json

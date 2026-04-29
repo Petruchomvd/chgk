@@ -20,11 +20,31 @@ MAX_QUESTIONS_IN_PROMPT = 25
 MAX_TOKENS = 2500
 
 
+class StudyQuestionsNotFound(LookupError):
+    """Нет вопросов в базе, на которых можно строить статью."""
+
+
 def _slugify(s: str) -> str:
     s = unicodedata.normalize("NFKD", s).strip().lower()
     s = re.sub(r"[^\w\s-]", "", s, flags=re.UNICODE)
     s = re.sub(r"[\s_-]+", "-", s)
     return s[:80] or "topic"
+
+
+def _extract_title(text: str, fallback: str) -> str:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            return stripped[2:].strip() or fallback
+    return fallback
+
+
+def _extract_questions_used(text: str) -> Optional[int]:
+    for line in text.splitlines()[:6]:
+        if line.strip().startswith("*"):
+            match = re.search(r"(\d+)", line)
+            return int(match.group(1)) if match else None
+    return None
 
 
 def list_studies() -> List[dict]:
@@ -33,8 +53,11 @@ def list_studies() -> List[dict]:
         return []
     items = []
     for p in sorted(STUDIES_DIR.glob("*.md"), key=lambda x: x.stat().st_mtime, reverse=True):
+        text = p.read_text(encoding="utf-8")
         items.append({
             "slug": p.stem,
+            "title": _extract_title(text, p.stem),
+            "questions_used": _extract_questions_used(text),
             "path": str(p),
             "size": p.stat().st_size,
             "mtime": p.stat().st_mtime,
@@ -124,6 +147,8 @@ def generate_article(
     Возвращает {'topic', 'slug', 'path', 'content', 'questions_used', 'cost'}.
     """
     questions = find_questions_about(chgk_conn, topic)
+    if not questions:
+        raise StudyQuestionsNotFound(topic)
     messages = _build_prompt(topic, questions)
 
     provider = create_provider("openrouter", model=model)

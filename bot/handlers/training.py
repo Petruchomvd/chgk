@@ -1,9 +1,10 @@
-"""/train — тренировка вопросами."""
+"""/train - quiz mode for CHGK questions."""
 from __future__ import annotations
 
 import logging
 from html import escape
 from typing import Dict, Optional
+from urllib.parse import urljoin
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -28,24 +29,21 @@ from bot.keyboards import (
     main_menu,
     reveal_keyboard,
     self_assessment,
-    training_modes,
     tournaments_results,
+    training_modes,
 )
 from bot.states import TrainingFlow
-from config import DB_PATH
+from config import BASE_URL, DB_PATH
 from dashboard.db_queries import get_all_categories
 from database.db import get_connection
-from database.training_db import (
-    count_due,
-    get_training_connection,
-)
+from database.training_db import count_due, get_training_connection
 
 router = Router()
 log = logging.getLogger(__name__)
 
 DEFAULT_COUNT = 10
 
-# Сессии в памяти процесса. Для одного пользователя достаточно.
+# In-memory session store. Fine for a single-user personal bot.
 _sessions: Dict[int, TrainingSession] = {}
 
 
@@ -65,7 +63,24 @@ def _clear_session(user_id: int) -> None:
     _sessions.pop(user_id, None)
 
 
-# ── /train ────────────────────────────────────────────────────────
+def _build_question_text(session: TrainingSession, q: dict) -> str:
+    parts = [f"<b>Вопрос {session.index + 1} / {session.total()}</b>\n"]
+    if q.get("razdatka_text"):
+        parts.append(f"<b>Раздатка:</b> {escape(q['razdatka_text'])}\n")
+    parts.append("\n" + escape(q["text"]))
+
+    text = "\n".join(parts)
+    if len(text) > 4000:
+        text = text[:3990] + "…"
+    return text
+
+
+def _razdatka_pic_url(raw_url: Optional[str]) -> Optional[str]:
+    if not raw_url:
+        return None
+    if raw_url.startswith(("http://", "https://")):
+        return raw_url
+    return urljoin(BASE_URL.rstrip("/") + "/", raw_url.lstrip("/"))
 
 
 @router.message(Command("train"))
@@ -91,9 +106,6 @@ async def cb_train(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
 
 
-# ── выбор режима ──────────────────────────────────────────────────
-
-
 @router.callback_query(F.data.startswith("train_mode:"), TrainingFlow.choosing_mode)
 async def cb_mode(cb: CallbackQuery, state: FSMContext) -> None:
     mode = cb.data.split(":", 1)[1]
@@ -116,9 +128,6 @@ async def cb_mode(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
 
 
-# ── рандом ────────────────────────────────────────────────────────
-
-
 async def _start_session_random(cb: CallbackQuery, state: FSMContext) -> None:
     chgk_conn = _get_chgk_conn()
     session = start_random(chgk_conn, count=DEFAULT_COUNT)
@@ -134,15 +143,13 @@ async def _start_session_random(cb: CallbackQuery, state: FSMContext) -> None:
     await _show_question(cb.message, state, cb.from_user.id)
 
 
-# ── категория ─────────────────────────────────────────────────────
-
-
 async def _ask_category(cb: CallbackQuery, state: FSMContext) -> None:
     chgk_conn = _get_chgk_conn()
     cats = get_all_categories(chgk_conn)
     chgk_conn.close()
     await cb.message.edit_text(
-        "Выбери категорию:", reply_markup=categories_menu(cats)
+        "Выбери категорию:",
+        reply_markup=categories_menu(cats),
     )
     await state.set_state(TrainingFlow.choosing_category)
 
@@ -173,9 +180,6 @@ async def cb_category(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
 
 
-# ── турнир ────────────────────────────────────────────────────────
-
-
 async def _ask_tournament(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.message.edit_text(
         "Введи название турнира (часть) или его ID числом."
@@ -192,7 +196,6 @@ async def msg_tournament_query(message: Message, state: FSMContext) -> None:
 
     chgk_conn = _get_chgk_conn()
 
-    # Если число — пробуем как pack_id
     if query.isdigit():
         pack = get_pack_by_id(chgk_conn, int(query))
         if pack and pack["questions_count"] > 0:
@@ -203,7 +206,6 @@ async def msg_tournament_query(message: Message, state: FSMContext) -> None:
         chgk_conn.close()
         return
 
-    # Иначе — поиск по названию
     packs = search_tournaments(chgk_conn, query, limit=10)
     chgk_conn.close()
 
@@ -234,7 +236,10 @@ async def cb_tournament(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 async def _start_tournament_session(
-    message: Message, state: FSMContext, pack_id: int, edit: bool = False
+    message: Message,
+    state: FSMContext,
+    pack_id: int,
+    edit: bool = False,
 ) -> None:
     chgk_conn = _get_chgk_conn()
     session = start_by_tournament(chgk_conn, pack_id, count=DEFAULT_COUNT)
@@ -253,9 +258,6 @@ async def _start_tournament_session(
     else:
         await message.answer(text)
     await _show_question(message, state, user_id)
-
-
-# ── повторения ────────────────────────────────────────────────────
 
 
 async def _start_session_review(cb: CallbackQuery, state: FSMContext) -> None:
@@ -277,9 +279,6 @@ async def _start_session_review(cb: CallbackQuery, state: FSMContext) -> None:
     await _show_question(cb.message, state, cb.from_user.id)
 
 
-# ── показ вопроса ─────────────────────────────────────────────────
-
-
 async def _show_question(message: Message, state: FSMContext, user_id: int) -> None:
     session = _get_session(user_id)
     if session is None or session.is_finished():
@@ -288,24 +287,16 @@ async def _show_question(message: Message, state: FSMContext, user_id: int) -> N
         return
 
     q = session.current()
-    text_parts = [f"<b>Вопрос {session.index + 1} / {session.total()}</b>\n"]
-    cat = q.get("category")
-    sub = q.get("subcategory")
-    if cat:
-        text_parts.append(f"<i>{cat}{(' → ' + sub) if sub else ''}</i>\n")
-    if q.get("razdatka_text"):
-        text_parts.append(f"<b>Раздатка:</b> {escape(q['razdatka_text'])}\n")
-    text_parts.append("\n" + escape(q["text"]))
+    photo_url = _razdatka_pic_url(q.get("razdatka_pic"))
+    if photo_url:
+        try:
+            await message.answer_photo(photo_url, caption="Раздатка")
+        except Exception as exc:  # pragma: no cover - Telegram/network behavior
+            log.warning("Failed to send razdatka image for question %s: %s", q.get("id"), exc)
+            await message.answer(f"<i>Раздатка:</i> {escape(photo_url)}")
 
-    full = "\n".join(text_parts)
-    if len(full) > 4000:
-        full = full[:3990] + "…"
-
-    await message.answer(full, reply_markup=reveal_keyboard())
+    await message.answer(_build_question_text(session, q), reply_markup=reveal_keyboard())
     await state.set_state(TrainingFlow.in_question)
-
-
-# ── ввод ответа текстом или /reveal ───────────────────────────────
 
 
 @router.message(TrainingFlow.in_question)
@@ -359,9 +350,6 @@ async def _reveal(message: Message, state: FSMContext, user_id: int) -> None:
     await state.set_state(TrainingFlow.in_reveal)
 
 
-# ── самооценка ────────────────────────────────────────────────────
-
-
 @router.callback_query(F.data.in_({"quiz:knew", "quiz:didnt"}), TrainingFlow.in_reveal)
 async def cb_self_assess(cb: CallbackQuery, state: FSMContext) -> None:
     user_id = cb.from_user.id
@@ -386,9 +374,6 @@ async def cb_self_assess(cb: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
 
 
-# ── прервать ──────────────────────────────────────────────────────
-
-
 @router.callback_query(F.data == "quiz:abort")
 async def cb_abort(cb: CallbackQuery, state: FSMContext) -> None:
     user_id = cb.from_user.id
@@ -399,28 +384,27 @@ async def cb_abort(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer("Прервано")
 
 
-# ── итоги ─────────────────────────────────────────────────────────
-
-
 async def _show_summary(message: Message, user_id: int) -> None:
     session = _get_session(user_id)
     if session is None or not session.results:
         await message.answer("Нет ответов для отчёта.", reply_markup=main_menu())
         _clear_session(user_id)
         return
-    s = session_summary(session)
+
+    summary = session_summary(session)
     lines = [
         "<b>📊 Итоги тренировки</b>",
-        f"Режим: {s['filters_repr']}",
-        f"Результат: <b>{s['correct']}/{s['total']} ({s['pct']}%)</b>",
-        f"Среднее время: {s['avg_time']:.1f}с",
+        f"Режим: {summary['filters_repr']}",
+        f"Результат: <b>{summary['correct']}/{summary['total']} ({summary['pct']}%)</b>",
+        f"Среднее время: {summary['avg_time']:.1f}с",
     ]
-    if s["by_category"]:
+    if summary["by_category"]:
         lines.append("\nПо категориям:")
-        for cat, d in sorted(s["by_category"].items()):
-            t = d["total"]
-            c = d["correct"]
-            p = round(100 * c / t) if t else 0
-            lines.append(f"  • {cat}: {c}/{t} ({p}%)")
+        for cat, data in sorted(summary["by_category"].items()):
+            total = data["total"]
+            correct = data["correct"]
+            pct = round(100 * correct / total) if total else 0
+            lines.append(f"  • {cat}: {correct}/{total} ({pct}%)")
+
     await message.answer("\n".join(lines), reply_markup=after_finish())
     _clear_session(user_id)

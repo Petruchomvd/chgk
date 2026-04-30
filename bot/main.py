@@ -45,6 +45,11 @@ def parse_allowed_user_ids(env: Mapping[str, str] | None = None) -> set[int]:
     return allowed
 
 
+def get_bot_token(env: Mapping[str, str] | None = None) -> str:
+    env = env or os.environ
+    return env.get("CHGK_BOT_TOKEN", "").strip()
+
+
 def _event_user_and_chat_type(
     event: Message | CallbackQuery,
 ) -> tuple[Optional[int], Optional[str], Optional[str]]:
@@ -118,9 +123,9 @@ async def _set_commands(bot: Bot) -> None:
 
 
 async def main() -> None:
-    token = os.environ.get("TG_DIGEST_BOT_TOKEN") or os.environ.get("CHGK_BOT_TOKEN", "")
+    token = get_bot_token()
     if not token:
-        log.error("Bot token is missing: set TG_DIGEST_BOT_TOKEN or CHGK_BOT_TOKEN in .env")
+        log.error("Bot token is missing: set CHGK_BOT_TOKEN in .env")
         sys.exit(1)
 
     allowed_user_ids = parse_allowed_user_ids()

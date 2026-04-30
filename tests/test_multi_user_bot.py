@@ -1,6 +1,6 @@
 import sqlite3
 
-from bot.main import parse_allowed_user_ids
+from bot.main import get_bot_token, parse_allowed_user_ids
 from database.training_db import (
     count_due,
     get_due_question_ids,
@@ -17,6 +17,15 @@ def test_parse_allowed_user_ids_merges_allowlist_and_owner():
     }
 
     assert parse_allowed_user_ids(env) == {42, 1001, 1002, 1003, 1004}
+
+
+def test_get_bot_token_uses_only_chgk_bot_token():
+    env = {
+        "CHGK_BOT_TOKEN": "primary-token",
+        "TG_DIGEST_BOT_TOKEN": "should-be-ignored",
+    }
+
+    assert get_bot_token(env) == "primary-token"
 
 
 def test_training_progress_isolated_between_users(tmp_path):

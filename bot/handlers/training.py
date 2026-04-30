@@ -14,6 +14,7 @@ from aiogram.types import CallbackQuery, Message
 from app.training_engine import (
     TrainingSession,
     get_pack_by_id,
+    get_pack_tours,
     record_and_advance,
     search_tournaments,
     session_summary,
@@ -30,6 +31,7 @@ from bot.keyboards import (
     reveal_keyboard,
     self_assessment,
     tournaments_results,
+    tournament_tours_menu,
     training_modes,
 )
 from bot.states import TrainingFlow
@@ -41,7 +43,7 @@ from database.training_db import count_due, get_training_connection
 router = Router()
 log = logging.getLogger(__name__)
 
-DEFAULT_COUNT = 10
+DEFAULT_COUNT = 12
 
 # In-memory session store. Fine for a single-user personal bot.
 _sessions: Dict[int, TrainingSession] = {}
@@ -186,7 +188,9 @@ async def cb_category(cb: CallbackQuery, state: FSMContext) -> None:
 
 async def _ask_tournament(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.message.edit_text(
-        "Введи название турнира (часть) или его ID числом."
+        "Введи название турнира или его часть.\n"
+        "Например: Балрог, ОВСЧ, Чемпионат России.\n"
+        "Можно также прислать ID турнира числом."
     )
     await state.set_state(TrainingFlow.entering_tournament_query)
 
@@ -204,7 +208,7 @@ async def msg_tournament_query(message: Message, state: FSMContext) -> None:
         pack = get_pack_by_id(chgk_conn, int(query))
         if pack and pack["questions_count"] > 0:
             chgk_conn.close()
-            await _start_tournament_session(
+            await _choose_or_start_tournament_session(
                 message,
                 state,
                 message.from_user.id,
@@ -215,7 +219,7 @@ async def msg_tournament_query(message: Message, state: FSMContext) -> None:
         chgk_conn.close()
         return
 
-    packs = search_tournaments(chgk_conn, query, limit=10)
+    packs = search_tournaments(chgk_conn, query, limit=12)
     chgk_conn.close()
 
     if not packs:
@@ -224,8 +228,18 @@ async def msg_tournament_query(message: Message, state: FSMContext) -> None:
         )
         return
 
+    exact_matches = [p for p in packs if p["title"].casefold() == query.casefold()]
+    if len(exact_matches) == 1:
+        await _choose_or_start_tournament_session(
+            message,
+            state,
+            message.from_user.id,
+            exact_matches[0]["id"],
+        )
+        return
+
     await message.answer(
-        f"Найдено {len(packs)}, выбери:",
+        f"Найдено {len(packs)}, выбери турнир:",
         reply_markup=tournaments_results(packs),
     )
     await state.set_state(TrainingFlow.choosing_tournament)
@@ -240,7 +254,7 @@ async def cb_tournament(cb: CallbackQuery, state: FSMContext) -> None:
         await cb.answer()
         return
 
-    await _start_tournament_session(
+    await _choose_or_start_tournament_session(
         cb.message,
         state,
         cb.from_user.id,
@@ -250,7 +264,28 @@ async def cb_tournament(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
 
 
-async def _start_tournament_session(
+@router.callback_query(F.data.startswith("train_tour:"), TrainingFlow.choosing_tournament_tour)
+async def cb_tournament_tour(cb: CallbackQuery, state: FSMContext) -> None:
+    payload = cb.data.split(":", 1)[1]
+    if payload == "cancel":
+        await state.clear()
+        await cb.message.edit_text("Отменено.")
+        await cb.answer()
+        return
+
+    pack_id_raw, tour_number_raw = payload.split(":", 1)
+    await _start_tournament_session(
+        cb.message,
+        state,
+        cb.from_user.id,
+        int(pack_id_raw),
+        int(tour_number_raw),
+        edit=True,
+    )
+    await cb.answer()
+
+
+async def _choose_or_start_tournament_session(
     message: Message,
     state: FSMContext,
     user_id: int,
@@ -258,7 +293,52 @@ async def _start_tournament_session(
     edit: bool = False,
 ) -> None:
     chgk_conn = _get_chgk_conn()
-    session = start_by_tournament(chgk_conn, pack_id, count=DEFAULT_COUNT)
+    pack = get_pack_by_id(chgk_conn, pack_id)
+    tours = get_pack_tours(chgk_conn, pack_id)
+    chgk_conn.close()
+
+    if not pack or pack["questions_count"] <= 0 or not tours:
+        await message.answer("В этом турнире не оказалось вопросов.")
+        await state.clear()
+        return
+
+    if len(tours) == 1:
+        await _start_tournament_session(
+            message,
+            state,
+            user_id,
+            pack_id,
+            int(tours[0]["tour_number"]),
+            edit=edit,
+        )
+        return
+
+    text = (
+        f"Турнир: <b>{escape(pack['title'])}</b>\n"
+        "Выбери тур. Сессия возьмёт первые 12 вопросов этого тура."
+    )
+    if edit:
+        await message.edit_text(text, reply_markup=tournament_tours_menu(pack_id, tours))
+    else:
+        await message.answer(text, reply_markup=tournament_tours_menu(pack_id, tours))
+    await state.set_state(TrainingFlow.choosing_tournament_tour)
+
+
+async def _start_tournament_session(
+    message: Message,
+    state: FSMContext,
+    user_id: int,
+    pack_id: int,
+    tour_number: Optional[int] = None,
+    edit: bool = False,
+) -> None:
+    chgk_conn = _get_chgk_conn()
+    session = start_by_tournament(
+        chgk_conn,
+        pack_id,
+        count=DEFAULT_COUNT,
+        tour_number=tour_number,
+    )
     chgk_conn.close()
 
     if not session.questions:

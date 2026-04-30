@@ -40,13 +40,29 @@ def categories_menu(categories: List[dict]) -> InlineKeyboardMarkup:
 
 def tournaments_results(packs: List[dict]) -> InlineKeyboardMarkup:
     rows = []
-    for p in packs[:10]:
-        title = p["title"][:50]
+    for p in packs[:12]:
+        title = p["title"][:42]
         rows.append([InlineKeyboardButton(
-            text=f"{title} · {p['questions_count']} вопр.",
+            text=f"{title} · {p['questions_count']} вопр. · id {p['id']}",
             callback_data=f"train_pack:{p['id']}",
         )])
     rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="train_pack:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def tournament_tours_menu(pack_id: int, tours: List[dict]) -> InlineKeyboardMarkup:
+    rows = []
+    for tour in tours:
+        shown = min(tour["questions_count"], 12)
+        if tour["questions_count"] > 12:
+            label = f"Тур {tour['tour_number']} · {shown} из {tour['questions_count']}"
+        else:
+            label = f"Тур {tour['tour_number']} · {tour['questions_count']} вопр."
+        rows.append([InlineKeyboardButton(
+            text=label,
+            callback_data=f"train_tour:{pack_id}:{tour['tour_number']}",
+        )])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="train_tour:cancel")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

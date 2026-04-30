@@ -7,6 +7,7 @@ class TrainingFlow(StatesGroup):
     choosing_category = State()
     entering_tournament_query = State()
     choosing_tournament = State()
+    choosing_tournament_tour = State()
     in_question = State()
     in_reveal = State()
 

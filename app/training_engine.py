@@ -4,7 +4,6 @@ UI-agnostic: вызывается из бота, дашборда или CLI. Н
 """
 from __future__ import annotations
 
-import random
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -49,7 +48,7 @@ class TrainingSession:
 
 def start_random(
     chgk_conn: sqlite3.Connection,
-    count: int = 10,
+    count: int = 12,
     seed: Optional[int] = None,
     difficulty_range: Optional[tuple] = None,
 ) -> TrainingSession:
@@ -66,7 +65,7 @@ def start_random(
 def start_by_category(
     chgk_conn: sqlite3.Connection,
     category_ids: List[int],
-    count: int = 10,
+    count: int = 12,
     seed: Optional[int] = None,
     difficulty_range: Optional[tuple] = None,
 ) -> TrainingSession:
@@ -83,28 +82,35 @@ def start_by_category(
 def start_by_tournament(
     chgk_conn: sqlite3.Connection,
     pack_id: int,
-    count: Optional[int] = None,
+    count: Optional[int] = 12,
     seed: Optional[int] = None,
+    tour_number: Optional[int] = None,
 ) -> TrainingSession:
     """Все вопросы конкретного пака (или семпл, если count указан)."""
     rows = chgk_conn.execute(
-        "SELECT id FROM questions WHERE pack_id = ? ORDER BY tour_number, number",
-        (pack_id,),
+        """
+        SELECT id
+        FROM questions
+        WHERE pack_id = ?
+          AND (? IS NULL OR COALESCE(tour_number, 1) = ?)
+        ORDER BY COALESCE(tour_number, 1), number, id
+        """,
+        (pack_id, tour_number, tour_number),
     ).fetchall()
     qids = [r["id"] for r in rows]
-    if count is not None and count < len(qids):
-        rng = random.Random(seed)
-        qids = rng.sample(qids, count)
+    if count is not None:
+        qids = qids[:count]
     questions = _fetch_full_questions(chgk_conn, qids)
 
     pack = chgk_conn.execute(
         "SELECT title FROM packs WHERE id = ?", (pack_id,)
     ).fetchone()
     title = pack["title"] if pack else f"pack #{pack_id}"
+    tour_suffix = f" · тур {tour_number}" if tour_number is not None else ""
     return TrainingSession(
         mode="tournament",
         questions=questions,
-        filters_repr=f"{title} · {len(questions)} вопросов",
+        filters_repr=f"{title}{tour_suffix} · {len(questions)} вопросов",
     )
 
 
@@ -112,7 +118,7 @@ def start_review(
     chgk_conn: sqlite3.Connection,
     training_conn: sqlite3.Connection,
     user_id: int,
-    count: int = 20,
+    count: int = 12,
 ) -> TrainingSession:
     """Вопросы из Leitner-очереди, у которых наступило время повторения."""
     qids = get_due_question_ids(training_conn, user_id, limit=count)
@@ -124,17 +130,64 @@ def start_review(
     )
 
 
+def get_pack_tours(chgk_conn: sqlite3.Connection, pack_id: int) -> List[Dict]:
+    rows = chgk_conn.execute(
+        """
+        SELECT COALESCE(tour_number, 1) AS tour_number, COUNT(*) AS questions_count
+        FROM questions
+        WHERE pack_id = ?
+        GROUP BY COALESCE(tour_number, 1)
+        ORDER BY COALESCE(tour_number, 1)
+        """,
+        (pack_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def search_tournaments(chgk_conn: sqlite3.Connection, query: str, limit: int = 20) -> List[Dict]:
-    """Поиск паков по подстроке в названии."""
+    """Поиск турниров по названию с Unicode-friendly ранжированием."""
+    query_norm = query.strip().casefold()
+    if not query_norm:
+        return []
+
     rows = chgk_conn.execute(
         "SELECT p.id, p.title, p.difficulty, COUNT(q.id) AS questions_count "
         "FROM packs p LEFT JOIN questions q ON q.pack_id = p.id "
-        "WHERE p.title LIKE ? "
-        "GROUP BY p.id "
-        "ORDER BY questions_count DESC LIMIT ?",
-        (f"%{query}%", limit),
+        "GROUP BY p.id"
     ).fetchall()
-    return [dict(r) for r in rows]
+
+    matches: List[Dict] = []
+    for row in rows:
+        pack = dict(row)
+        title_norm = pack["title"].casefold()
+        pos = title_norm.find(query_norm)
+        if pos == -1:
+            continue
+
+        if title_norm == query_norm:
+            rank = 0
+        elif title_norm.startswith(query_norm):
+            rank = 1
+        else:
+            rank = 2
+
+        pack["_rank"] = rank
+        pack["_pos"] = pos
+        matches.append(pack)
+
+    matches.sort(
+        key=lambda p: (
+            p["_rank"],
+            p["_pos"],
+            -p["questions_count"],
+            p["title"].casefold(),
+        )
+    )
+
+    return [
+        {k: v for k, v in pack.items() if not k.startswith("_")}
+        for pack in matches[:limit]
+    ]
 
 
 def get_pack_by_id(chgk_conn: sqlite3.Connection, pack_id: int) -> Optional[Dict]:

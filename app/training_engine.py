@@ -144,6 +144,22 @@ def get_pack_tours(chgk_conn: sqlite3.Connection, pack_id: int) -> List[Dict]:
     return [dict(r) for r in rows]
 
 
+def get_recent_tournaments(chgk_conn: sqlite3.Connection, limit: int = 12) -> List[Dict]:
+    rows = chgk_conn.execute(
+        """
+        SELECT p.id, p.title, p.difficulty, COUNT(q.id) AS questions_count
+        FROM packs p
+        JOIN questions q ON q.pack_id = p.id
+        GROUP BY p.id
+        HAVING COUNT(q.id) > 0
+        ORDER BY p.id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def search_tournaments(chgk_conn: sqlite3.Connection, query: str, limit: int = 20) -> List[Dict]:
     """Поиск турниров по названию с Unicode-friendly ранжированием."""
     query_norm = query.strip().casefold()

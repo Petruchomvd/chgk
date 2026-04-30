@@ -1,6 +1,11 @@
 import sqlite3
 
-from app.training_engine import get_pack_tours, search_tournaments, start_by_tournament
+from app.training_engine import (
+    get_pack_tours,
+    get_recent_tournaments,
+    search_tournaments,
+    start_by_tournament,
+)
 from bot.handlers import training
 
 
@@ -85,6 +90,33 @@ def test_search_tournaments_prefers_exact_unicode_match():
         "Балрог-2",
         "Супер Балрог",
     ]
+
+
+def test_get_recent_tournaments_returns_latest_by_id():
+    conn = _make_conn()
+    try:
+        conn.executemany(
+            "INSERT INTO packs(id, title, difficulty, link) VALUES (?, ?, ?, ?)",
+            [
+                (1, "Старый", 4.0, None),
+                (5, "Новый", 4.0, None),
+                (3, "Средний", 4.0, None),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO questions(id, pack_id, tour_number, number, text, answer) VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (11, 1, 1, 1, "Q1", "A1"),
+                (31, 3, 1, 1, "Q2", "A2"),
+                (51, 5, 1, 1, "Q3", "A3"),
+            ],
+        )
+
+        results = get_recent_tournaments(conn, limit=3)
+    finally:
+        conn.close()
+
+    assert [pack["id"] for pack in results] == [5, 3, 1]
 
 
 def test_get_pack_tours_groups_questions_by_tour():

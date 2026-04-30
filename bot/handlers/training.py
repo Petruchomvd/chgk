@@ -14,6 +14,7 @@ from aiogram.types import CallbackQuery, Message
 from app.training_engine import (
     TrainingSession,
     get_pack_by_id,
+    get_recent_tournaments,
     get_pack_tours,
     record_and_advance,
     search_tournaments,
@@ -187,15 +188,20 @@ async def cb_category(cb: CallbackQuery, state: FSMContext) -> None:
 
 
 async def _ask_tournament(cb: CallbackQuery, state: FSMContext) -> None:
-    await cb.message.edit_text(
-        "Введи название турнира или его часть.\n"
-        "Например: Балрог, ОВСЧ, Чемпионат России.\n"
-        "Можно также прислать ID турнира числом."
+    chgk_conn = _get_chgk_conn()
+    packs = get_recent_tournaments(chgk_conn, limit=12)
+    chgk_conn.close()
+
+    text = (
+        "Выбери турнир из списка ниже.\n"
+        "Если нужного нет, просто пришли название или его часть."
     )
-    await state.set_state(TrainingFlow.entering_tournament_query)
+    await cb.message.edit_text(text, reply_markup=tournaments_results(packs))
+    await state.set_state(TrainingFlow.choosing_tournament)
 
 
 @router.message(TrainingFlow.entering_tournament_query)
+@router.message(TrainingFlow.choosing_tournament)
 async def msg_tournament_query(message: Message, state: FSMContext) -> None:
     query = (message.text or "").strip()
     if not query:

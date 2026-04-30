@@ -15,7 +15,11 @@ from dashboard.training_queries import (
     get_training_questions_by_category,
     get_training_questions_random,
 )
-from database.training_db import get_due_question_ids, record_attempt
+from database.training_db import (
+    UNCATEGORIZED_LABEL,
+    get_due_question_ids,
+    record_attempt,
+)
 
 Mode = Literal["random", "category", "tournament", "review"]
 
@@ -107,10 +111,11 @@ def start_by_tournament(
 def start_review(
     chgk_conn: sqlite3.Connection,
     training_conn: sqlite3.Connection,
+    user_id: int,
     count: int = 20,
 ) -> TrainingSession:
     """Вопросы из Leitner-очереди, у которых наступило время повторения."""
-    qids = get_due_question_ids(training_conn, limit=count)
+    qids = get_due_question_ids(training_conn, user_id, limit=count)
     questions = _fetch_full_questions(chgk_conn, qids)
     return TrainingSession(
         mode="review",
@@ -151,6 +156,7 @@ def submit_answer(session: TrainingSession, user_answer: str) -> Dict:
 def record_and_advance(
     session: TrainingSession,
     training_conn: sqlite3.Connection,
+    user_id: int,
     knew: bool,
 ) -> bool:
     """Записать самооценку, перейти к следующему. Возвращает True если есть следующий."""
@@ -161,6 +167,7 @@ def record_and_advance(
     elapsed = time.time() - session.question_started_at
     record_attempt(
         training_conn,
+        user_id=user_id,
         question_id=q["id"],
         knew=knew,
         user_answer=session.user_answer,
@@ -191,7 +198,7 @@ def session_summary(session: TrainingSession) -> Dict:
     avg_time = sum(times) / len(times) if times else 0.0
     by_cat: Dict[str, Dict[str, int]] = {}
     for r in session.results:
-        cat = r.get("category") or "—"
+        cat = r.get("category") or UNCATEGORIZED_LABEL
         d = by_cat.setdefault(cat, {"total": 0, "correct": 0})
         d["total"] += 1
         if r["knew"]:

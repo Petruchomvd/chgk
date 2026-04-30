@@ -85,11 +85,15 @@ def _razdatka_pic_url(raw_url: Optional[str]) -> Optional[str]:
 
 @router.message(Command("train"))
 async def cmd_train(message: Message, state: FSMContext) -> None:
+    await _open_train_menu(message, state, message.from_user.id)
+
+
+async def _open_train_menu(message: Message, state: FSMContext, user_id: int) -> None:
     await state.clear()
-    _clear_session(message.from_user.id)
+    _clear_session(user_id)
 
     tconn = get_training_connection()
-    due = count_due(tconn)
+    due = count_due(tconn, user_id)
     tconn.close()
 
     suffix = f" (повторений готово: {due})" if due else ""
@@ -102,7 +106,7 @@ async def cmd_train(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "cmd:train")
 async def cb_train(cb: CallbackQuery, state: FSMContext) -> None:
-    await cmd_train(cb.message, state)
+    await _open_train_menu(cb.message, state, cb.from_user.id)
     await cb.answer()
 
 
@@ -200,7 +204,12 @@ async def msg_tournament_query(message: Message, state: FSMContext) -> None:
         pack = get_pack_by_id(chgk_conn, int(query))
         if pack and pack["questions_count"] > 0:
             chgk_conn.close()
-            await _start_tournament_session(message, state, int(query))
+            await _start_tournament_session(
+                message,
+                state,
+                message.from_user.id,
+                int(query),
+            )
             return
         await message.answer(f"Пак с ID {query} не найден или пуст.")
         chgk_conn.close()
@@ -231,13 +240,20 @@ async def cb_tournament(cb: CallbackQuery, state: FSMContext) -> None:
         await cb.answer()
         return
 
-    await _start_tournament_session(cb.message, state, int(payload), edit=True)
+    await _start_tournament_session(
+        cb.message,
+        state,
+        cb.from_user.id,
+        int(payload),
+        edit=True,
+    )
     await cb.answer()
 
 
 async def _start_tournament_session(
     message: Message,
     state: FSMContext,
+    user_id: int,
     pack_id: int,
     edit: bool = False,
 ) -> None:
@@ -250,7 +266,6 @@ async def _start_tournament_session(
         await state.clear()
         return
 
-    user_id = message.chat.id
     _set_session(user_id, session)
     text = f"Старт: {session.filters_repr}"
     if edit:
@@ -263,7 +278,7 @@ async def _start_tournament_session(
 async def _start_session_review(cb: CallbackQuery, state: FSMContext) -> None:
     chgk_conn = _get_chgk_conn()
     tconn = get_training_connection()
-    session = start_review(chgk_conn, tconn, count=DEFAULT_COUNT)
+    session = start_review(chgk_conn, tconn, cb.from_user.id, count=DEFAULT_COUNT)
     chgk_conn.close()
     tconn.close()
 
@@ -362,7 +377,7 @@ async def cb_self_assess(cb: CallbackQuery, state: FSMContext) -> None:
 
     knew = cb.data == "quiz:knew"
     tconn = get_training_connection()
-    has_next = record_and_advance(session, tconn, knew)
+    has_next = record_and_advance(session, tconn, user_id, knew)
     tconn.close()
 
     await cb.answer("Записано ✅" if knew else "Записано ❌")

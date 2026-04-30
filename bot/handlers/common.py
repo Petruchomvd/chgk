@@ -53,12 +53,12 @@ async def cmd_cancel(message: Message, state: FSMContext) -> None:
 
 @router.message(Command("stats"))
 async def cmd_stats(message: Message) -> None:
-    await _send_stats(message)
+    await _send_stats(message, message.from_user.id)
 
 
 @router.callback_query(F.data == "cmd:stats")
 async def cb_stats(cb: CallbackQuery) -> None:
-    await _send_stats(cb.message)
+    await _send_stats(cb.message, cb.from_user.id)
     await cb.answer()
 
 
@@ -69,9 +69,9 @@ async def cb_menu(cb: CallbackQuery, state: FSMContext) -> None:
     await cb.answer()
 
 
-async def _send_stats(message: Message) -> None:
+async def _send_stats(message: Message, user_id: int) -> None:
     tconn = get_training_connection()
-    s = get_stats(tconn)
+    s = get_stats(tconn, user_id)
     tconn.close()
 
     if s["total_attempts"] == 0:

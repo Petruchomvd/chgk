@@ -23,7 +23,10 @@ import openpyxl
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent
-DB = ROOT / "chgk_analysis.db"
+sys.path.insert(0, str(ROOT))
+
+from config import DB_PATH as DB
+
 SURVEY = ROOT / "результаты.xlsx"
 GSET_THEMES = ROOT / "data" / "gentleman_set" / "thematic_mapping.json"
 GSET_ANSWERS = ROOT / "data" / "gentleman_set" / "top_answers.json"

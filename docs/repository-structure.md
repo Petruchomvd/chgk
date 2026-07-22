@@ -18,6 +18,7 @@ This file is the canonical map of the project after cleanup work.
 These are runtime outputs or personal research materials and should not be
 treated as source code:
 
+- `chgk_analysis.db` — локальная копия до переноса на сервер или проверенная резервная копия
 - `training.db`
 - `studies/`
 - `output/`
@@ -25,6 +26,10 @@ treated as source code:
 - root-level `data/*.md`, `data/*.txt`, `data/*.pdf`, `data/*.docx`
 - cache-style files under `data/gentleman_set/`
 - generated YouTube transcript files under `data/youtube/transcripts/`
+
+В рабочем серверном окружении обе базы хранятся вне Git-клона. Пути задаются
+через `CHGK_DB_PATH` и `CHGK_TRAINING_DB_PATH`; GitHub не используется для их
+доставки.
 
 ## Legacy and archival areas
 

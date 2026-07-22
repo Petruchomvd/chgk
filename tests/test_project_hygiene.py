@@ -35,3 +35,34 @@ def test_benchmark_scripts_use_scripts_package_for_ids():
         src = (root / rel_path).read_text(encoding="utf-8")
         assert "from scripts.benchmark_ids import BENCHMARK_IDS" in src
         assert "from test_benchmark_ids import BENCHMARK_IDS" not in src
+
+
+def test_runtime_databases_are_not_delivered_through_git_lfs():
+    root = _project_root()
+    gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+    gitattributes = (root / ".gitattributes").read_text(encoding="utf-8")
+    dashboard = (root / "dashboard" / "app.py").read_text(encoding="utf-8")
+
+    assert "*.db" in gitignore
+    assert "*.db-wal" in gitignore
+    assert "*.db-shm" in gitignore
+    assert "filter=lfs" not in gitattributes
+    assert "git lfs pull" not in dashboard
+    assert not (root / "packages.txt").exists()
+    assert not (root / "render.yaml").exists()
+
+
+def test_server_facing_tools_use_configured_database_paths():
+    root = _project_root()
+    expected_imports = {
+        "dashboard/tournament.py": "from config import DB_PATH",
+        "scripts/candidate_test_pool.py": "from config import DB_PATH as DB",
+        "scripts/candidate_test_final.py": "from config import DB_PATH as DB",
+        "scripts/candidate_test_select.py": "from config import DB_PATH as DB",
+        "scripts/generate_team_reports.py": "from config import DB_PATH as DB",
+        "database/training_db.py": "CHGK_TRAINING_DB_PATH",
+    }
+
+    for rel_path, marker in expected_imports.items():
+        src = (root / rel_path).read_text(encoding="utf-8")
+        assert marker in src

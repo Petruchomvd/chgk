@@ -4,7 +4,6 @@
     streamlit run dashboard/app.py
 """
 
-import subprocess
 import sys
 from pathlib import Path
 
@@ -16,25 +15,6 @@ import streamlit as st
 
 from config import DB_PATH
 
-
-# ─── Git LFS: подтянуть реальные файлы если на Streamlit Cloud ────
-def _ensure_lfs():
-    """Если БД — LFS-pointer, выполнить git lfs pull."""
-    if not DB_PATH.exists():
-        return
-    # LFS pointer — текстовый файл < 1 КБ, начинается с "version "
-    if DB_PATH.stat().st_size < 1024:
-        try:
-            with open(DB_PATH, "r", encoding="utf-8") as f:
-                if f.read(8) == "version ":
-                    subprocess.run(
-                        ["git", "lfs", "pull"], cwd=str(DB_PATH.parent.parent),
-                        timeout=120, check=False,
-                    )
-        except (UnicodeDecodeError, OSError):
-            pass  # Настоящий бинарный файл — всё ок
-
-_ensure_lfs()
 from database.db import get_connection
 from dashboard.db_queries import (
     agreement_matrix,
@@ -87,6 +67,28 @@ st.set_page_config(
     page_icon="\U0001f9e0",
     layout="wide",
 )
+
+if not DB_PATH.is_file():
+    st.error(
+        "База CHGK не найдена. На сервере укажите абсолютный путь в "
+        "CHGK_DB_PATH; для локальной проверки используйте резервную копию с сервера."
+    )
+    st.code(f"CHGK_DB_PATH={DB_PATH}")
+    st.stop()
+
+if DB_PATH.stat().st_size < 1024:
+    try:
+        is_lfs_pointer = DB_PATH.read_text(encoding="utf-8").startswith(
+            "version https://git-lfs.github.com/spec/"
+        )
+    except (UnicodeDecodeError, OSError):
+        is_lfs_pointer = False
+    if is_lfs_pointer:
+        st.error(
+            "Вместо рабочей базы найден старый указатель Git LFS. "
+            "Скопируйте проверенную базу с сервера и задайте CHGK_DB_PATH."
+        )
+        st.stop()
 
 
 def get_conn():

@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DB = ROOT / "chgk_analysis.db"
+sys.path.insert(0, str(ROOT))
+
+from config import DB_PATH as DB
+
 OUT_DIR = ROOT / "data"
 
 # (question_id, claude_tier)

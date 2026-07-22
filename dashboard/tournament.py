@@ -7,6 +7,8 @@ from typing import List, Optional
 import pandas as pd
 import streamlit as st
 
+from config import DB_PATH
+
 from dashboard.components import (
     CATEGORY_COLORS,
     author_radar_chart,
@@ -690,7 +692,7 @@ def _tab_gentleman(conn, project_root: Path):
 
     answer_category, enriched, global_freq = _load_gentleman_data(project_root)
 
-    db_path = str(project_root / "chgk_analysis.db")
+    db_path = str(DB_PATH)
 
     # Контролы
     col_freq, col_mode = st.columns([1, 1])

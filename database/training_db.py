@@ -9,7 +9,14 @@ from typing import List, Optional
 
 from config import PROJECT_ROOT
 
-TRAINING_DB_PATH = PROJECT_ROOT / "training.db"
+_configured_training_db_path = Path(
+    os.environ.get("CHGK_TRAINING_DB_PATH", "training.db")
+).expanduser()
+TRAINING_DB_PATH = (
+    _configured_training_db_path
+    if _configured_training_db_path.is_absolute()
+    else PROJECT_ROOT / _configured_training_db_path
+)
 UNCATEGORIZED_LABEL = "Без категории"
 
 _ATTEMPTS_SCHEMA = """

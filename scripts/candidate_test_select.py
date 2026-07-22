@@ -12,11 +12,15 @@ from __future__ import annotations
 
 import random
 import sqlite3
+import sys
 from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DB = ROOT / "chgk_analysis.db"
+sys.path.insert(0, str(ROOT))
+
+from config import DB_PATH as DB
+
 OUT_DIR = ROOT / "data"
 
 SEED = 20260421

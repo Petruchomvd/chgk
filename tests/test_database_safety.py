@@ -96,3 +96,56 @@ def test_get_connection_rejects_cross_thread_by_default(tmp_path):
 
     assert errors
     assert isinstance(errors[0], sqlite3.ProgrammingError)
+
+
+def test_existing_database_is_migrated_before_new_column_indexes(tmp_path):
+    db_path = tmp_path / "legacy-columns.db"
+    legacy = sqlite3.connect(db_path)
+    legacy.executescript(
+        """
+        CREATE TABLE packs (
+            id INTEGER PRIMARY KEY,
+            title TEXT,
+            question_count INTEGER,
+            start_date TEXT,
+            end_date TEXT,
+            published_date TEXT,
+            teams_played INTEGER,
+            difficulty REAL,
+            authors TEXT,
+            link TEXT,
+            parse_status TEXT DEFAULT 'pending',
+            error_message TEXT
+        );
+        CREATE TABLE questions (
+            id INTEGER PRIMARY KEY,
+            pack_id INTEGER NOT NULL,
+            number INTEGER,
+            tour_number INTEGER,
+            text TEXT NOT NULL,
+            answer TEXT NOT NULL,
+            zachet TEXT,
+            nezachet TEXT,
+            comment TEXT,
+            source TEXT,
+            authors TEXT,
+            razdatka_text TEXT,
+            razdatka_pic TEXT
+        );
+        """
+    )
+    legacy.close()
+
+    conn = get_connection(db_path)
+    try:
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info('questions')").fetchall()
+        }
+        indexes = {
+            row[1] for row in conn.execute("PRAGMA index_list('questions')").fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert {"difficulty", "position_in_pack"} <= columns
+    assert {"idx_questions_difficulty", "idx_questions_pack_position"} <= indexes

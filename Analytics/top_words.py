@@ -1,4 +1,5 @@
 from collections import Counter
+from pathlib import Path
 import re
 
 def top_n_words(filename, n=500, exclude_words = None):
@@ -39,6 +40,7 @@ russian_stopwords = set([
     # Добавьте сюда другие слова, которые хотите исключить
     ])
 
-top_words = top_n_words("C:/Users/User/Desktop/ПарсингЧГК/Игры_ответы", 500, exclude_words=russian_stopwords)
+project_root = Path(__file__).resolve().parents[1]
+top_words = top_n_words(project_root / "Text_files" / "Игры_ответы", 500, exclude_words=russian_stopwords)
 for i, (word, count) in enumerate(top_words):
     print(f"{i+1} место: {word} - {count}")

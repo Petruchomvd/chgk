@@ -18,6 +18,8 @@ def training_modes() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🏷 По категории", callback_data="train_mode:category")],
         [InlineKeyboardButton(text="🏆 По турниру", callback_data="train_mode:tournament")],
         [InlineKeyboardButton(text="🔁 Очередь повторений", callback_data="train_mode:review")],
+        [InlineKeyboardButton(text="🎯 Слабые темы команды", callback_data="train_mode:team_gap")],
+        [InlineKeyboardButton(text="🩹 Работа над ошибками", callback_data="train_mode:followup")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="train_mode:cancel")],
     ])
 

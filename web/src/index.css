@@ -1,0 +1,228 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* ══════════════════════════════════════════════════════════════════
+   «Картотека» — дизайн-система
+   Чернильная навигация · тёплая бумага · один янтарный акцент.
+   Шрифты подключаются локально в main.tsx (@fontsource) — офлайн.
+   ══════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ─── Домен ─────────────────────────────────────────────────── */
+  --ink: hsl(214 28% 15%);         /* #1B2430 — левая панель */
+  --ink-soft: hsl(214 26% 20%);    /* поверхности внутри панели */
+  --ink-line: hsl(214 20% 28%);    /* разделители на тёмном */
+  --ink-muted: hsl(214 14% 68%);   /* вторичный текст на тёмном — 6.2:1 */
+
+  --paper: hsl(40 36% 95%);        /* #F7F4EE — рабочая область */
+  --paper-raised: hsl(40 56% 98%); /* приподнятые поверхности */
+  --paper-sunk: hsl(38 26% 91%);   /* утопленные зоны, полосы строк */
+
+  --amber: hsl(38 59% 45%);        /* акцент: рамки, индикаторы */
+  --amber-ink: hsl(38 68% 30%);    /* акцент как ТЕКСТ — 6.4:1 на бумаге */
+  --amber-soft: hsl(38 50% 66%);
+  --amber-wash: hsl(38 62% 91%);
+
+  --knew: hsl(137 26% 31%);        /* приглушённый зелёный — 6.9:1 */
+  --knew-wash: hsl(137 28% 91%);
+  --missed: hsl(13 54% 39%);       /* терракота — 6.3:1 */
+  --missed-wash: hsl(13 52% 93%);
+
+  --shadow-color: 214 30% 20%;
+
+  /* ─── Семантика shadcn/ui, перенастроенная под систему ───────── */
+  --background: var(--paper);
+  --foreground: hsl(213 14% 16%);          /* 13.8:1 на бумаге */
+
+  --card: var(--paper-raised);
+  --card-foreground: var(--foreground);
+  --popover: hsl(40 56% 99%);
+  --popover-foreground: var(--foreground);
+
+  /* primary — чернила, а не дефолтный нейтральный */
+  --primary: hsl(214 28% 15%);
+  --primary-foreground: hsl(40 40% 96%);
+
+  --secondary: hsl(38 26% 91%);
+  --secondary-foreground: hsl(213 14% 16%);
+
+  --muted: hsl(38 24% 92%);
+  --muted-foreground: hsl(213 9% 38%);     /* 5.9:1 — вторичный текст */
+
+  --accent: var(--amber-wash);
+  --accent-foreground: var(--amber-ink);
+
+  --destructive: hsl(13 54% 39%);
+  --destructive-foreground: hsl(40 40% 96%);
+
+  --border: hsl(38 20% 84%);
+  --input: hsl(38 22% 78%);
+  --ring: hsl(38 59% 45%);                 /* фокус — янтарный */
+
+  --radius: 4px;                            /* сдержанно, без «пилюль» */
+}
+
+@theme inline {
+  /* Семантика */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Домен */
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-line: var(--ink-line);
+  --color-ink-muted: var(--ink-muted);
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-paper-sunk: var(--paper-sunk);
+  --color-amber: var(--amber);
+  --color-amber-ink: var(--amber-ink);
+  --color-amber-soft: var(--amber-soft);
+  --color-amber-wash: var(--amber-wash);
+  --color-knew: var(--knew);
+  --color-knew-wash: var(--knew-wash);
+  --color-missed: var(--missed);
+  --color-missed-wash: var(--missed-wash);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: calc(var(--radius) - 1px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 2px);
+
+  /* Типографика: serif — только длинные тексты вопросов */
+  --font-sans: "Inter", -apple-system, system-ui, sans-serif;
+  --font-serif: "Source Serif 4 Variable", "Source Serif 4", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Плотная шкала для интерфейса */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-2xs--letter-spacing: 0.02em;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.4rem;
+
+  /* Вопрос — читаем долго, поэтому крупнее и с воздухом */
+  --text-question: 1.3125rem;
+  --text-question--line-height: 1.75;
+  --text-question-sm: 1.0625rem;
+  --text-question-sm--line-height: 1.7;
+
+  /* Единственная анимация с функцией: объясняет появление ответа */
+  --animate-reveal: reveal 140ms ease-out;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    /* Список не «прыгает» при переключении страниц. */
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  }
+
+  /* Заметный фокус по всему приложению — работа с клавиатуры обязательна. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--amber-wash);
+    color: var(--foreground);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Текст вопроса — единственное место с крупной серифной типографикой. */
+@utility question-text {
+  font-family: var(--font-serif);
+  font-size: var(--text-question);
+  line-height: 1.75;
+  color: var(--foreground);
+  max-width: 62ch; /* мера строки для длинного чтения */
+}
+
+@utility prose-question {
+  font-family: var(--font-serif);
+  line-height: 1.7;
+  max-width: 68ch;
+}
+
+/* Клавиша-подсказка. */
+@utility kbd {
+  display: inline-flex;
+  height: 18px;
+  min-width: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  background: var(--paper-sunk);
+  padding-inline: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--muted-foreground);
+}
+
+@media (max-width: 640px) {
+  .question-text {
+    font-size: var(--text-question-sm);
+    line-height: 1.7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

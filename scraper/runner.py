@@ -72,18 +72,29 @@ def scrape_pack(session, conn, pack_id: int,
 
     html = resp.text
 
-    # Метаданные пакета
+    # Сначала полностью разбираем ответ в памяти. Запись ниже будет атомарной.
     metadata = extract_pack_metadata_from_html(html, pack_id)
-    upsert_pack(conn, metadata)
 
     # Фильтр по дате
     pub_date = metadata.get("published_date") or ""
     if date_from and pub_date < date_from:
-        mark_pack_status(conn, pack_id, "skipped", f"date {pub_date} < {date_from}")
+        with conn:
+            if not upsert_pack(conn, metadata, commit=False):
+                raise RuntimeError(f"Не удалось обновить пакет #{pack_id}")
+            mark_pack_status(
+                conn, pack_id, "skipped", f"date {pub_date} < {date_from}",
+                commit=False,
+            )
         print(f"пропуск (дата {pub_date} < {date_from})")
         return False
     if date_to and pub_date > date_to:
-        mark_pack_status(conn, pack_id, "skipped", f"date {pub_date} > {date_to}")
+        with conn:
+            if not upsert_pack(conn, metadata, commit=False):
+                raise RuntimeError(f"Не удалось обновить пакет #{pack_id}")
+            mark_pack_status(
+                conn, pack_id, "skipped", f"date {pub_date} > {date_to}",
+                commit=False,
+            )
         print(f"пропуск (дата {pub_date} > {date_to})")
         return False
 
@@ -98,15 +109,43 @@ def scrape_pack(session, conn, pack_id: int,
     questions = []
     tour_num = 1
     prev_number = 0
-    for q in raw_questions:
+    for position, q in enumerate(raw_questions, start=1):
         cur_number = q.get("number", 0)
         if cur_number <= prev_number:
             tour_num += 1
         prev_number = cur_number
-        questions.append(normalize_question(q, pack_id, tour_num))
+        questions.append(
+            normalize_question(
+                q,
+                pack_id,
+                tour_num,
+                position_in_pack=position,
+            )
+        )
 
-    inserted = insert_questions(conn, questions)
-    mark_pack_status(conn, pack_id, "parsed")
+    try:
+        with conn:
+            if not upsert_pack(conn, metadata, commit=False):
+                raise RuntimeError(f"Не удалось обновить пакет #{pack_id}")
+            inserted = insert_questions(conn, questions, commit=False, strict=True)
+            expected_ids = {q["id"] for q in questions}
+            stored_ids = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT id FROM questions WHERE pack_id = ?",
+                    (pack_id,),
+                ).fetchall()
+            }
+            if stored_ids != expected_ids:
+                raise RuntimeError(
+                    "Набор вопросов после записи не совпал с источником: "
+                    f"source={len(expected_ids)}, db={len(stored_ids)}"
+                )
+            mark_pack_status(conn, pack_id, "parsed", commit=False)
+    except Exception as exc:
+        mark_pack_status(conn, pack_id, "failed", str(exc))
+        print(f"ОШИБКА записи — {exc}")
+        return False
 
     title = metadata.get("title", "?")
     print(f"{title[:50]} — {inserted} вопросов")
@@ -114,17 +153,28 @@ def scrape_pack(session, conn, pack_id: int,
 
 
 def run_scraper(start_id: int = 1, end_id: int = None, max_packs: int = None,
-                force: bool = False, date_from: str = None, date_to: str = None):
+                force: bool = False, date_from: str = None, date_to: str = None,
+                db_path=DB_PATH, session=None) -> dict:
     """Главный цикл парсинга."""
-    conn = get_connection(DB_PATH)
-    session = create_session()
+    conn = get_connection(db_path)
+    owns_session = session is None
+    if session is None:
+        session = create_session()
 
     # Определяем диапазон
     if end_id is None:
         end_id = get_last_pack_id(session)
         if end_id == 0:
             print("Не удалось определить последний пакет")
-            return
+            conn.close()
+            if owns_session:
+                session.close()
+            return {
+                "success": 0,
+                "failed": 0,
+                "parsed_pack_ids": [],
+                "error": "last_pack_id_unavailable",
+            }
 
     already_parsed = get_parsed_pack_ids(conn)
     if force:
@@ -143,13 +193,28 @@ def run_scraper(start_id: int = 1, end_id: int = None, max_packs: int = None,
 
     success = 0
     failed = 0
+    parsed_pack_ids = []
     for i, pack_id in enumerate(pack_ids):
         # Предварительно создаём запись со статусом pending
         upsert_pack(conn, {"id": pack_id, "parse_status": "pending"})
 
         print(f"  [{i+1}/{total}] pack/{pack_id}...", end=" ", flush=True)
-        if scrape_pack(session, conn, pack_id, date_from=date_from, date_to=date_to):
+        try:
+            pack_ok = scrape_pack(
+                session,
+                conn,
+                pack_id,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        except Exception as exc:
+            mark_pack_status(conn, pack_id, "failed", str(exc))
+            print(f"ОШИБКА — {exc}")
+            pack_ok = False
+
+        if pack_ok:
             success += 1
+            parsed_pack_ids.append(pack_id)
         else:
             failed += 1
 
@@ -163,6 +228,15 @@ def run_scraper(start_id: int = 1, end_id: int = None, max_packs: int = None,
           f"БД: {get_question_count(conn)} вопросов")
 
     conn.close()
+    if owns_session:
+        session.close()
+    return {
+        "success": success,
+        "failed": failed,
+        "parsed_pack_ids": parsed_pack_ids,
+        "start_id": start_id,
+        "end_id": end_id,
+    }
 
 
 if __name__ == "__main__":

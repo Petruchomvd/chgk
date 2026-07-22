@@ -73,8 +73,10 @@ def _classify_twostage(
 ) -> Optional[List[Dict[str, Any]]]:
     """Двухэтапная классификация: категория → подкатегория."""
     # --- Этап 1: выбор категории из 14 ---
+    # 120 токенов: ответ теперь содержит поле "key" (краткое обоснование),
+    # при 50 JSON обрезался бы и парсинг падал
     messages1 = build_stage1_messages(text, answer, comment)
-    raw1 = provider.chat(messages1, max_tokens=50)
+    raw1 = provider.chat(messages1, max_tokens=120)
     if raw1 is None:
         return None
 

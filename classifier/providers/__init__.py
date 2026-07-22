@@ -72,10 +72,12 @@ PROVIDER_PRESETS = {
         "supports_json_mode": True,
     },
     "openrouter": {
-        "default_model": "google/gemini-2.5-flash",
-        "cost_per_1m_input": 0.15,
-        "cost_per_1m_output": 0.60,
-        "max_concurrent": 5,
+        # Цены обязаны соответствовать default_model, иначе estimate_cost врёт
+        # для всех моделей (так было: цены gemini при любой модели).
+        "default_model": "google/gemma-4-26b-a4b-it",
+        "cost_per_1m_input": 0.10,
+        "cost_per_1m_output": 0.30,
+        "max_concurrent": 16,
         "rate_limit_delay": 0.0,
         "env_key": "OPENROUTER_API_KEY",
         "supports_json_mode": True,

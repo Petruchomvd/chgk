@@ -13,7 +13,12 @@ if _env_path.exists():
             continue
         key, _, value = line.partition("=")
         os.environ.setdefault(key.strip(), value.strip())
-DB_PATH = PROJECT_ROOT / "chgk_analysis.db"
+_configured_db_path = Path(os.environ.get("CHGK_DB_PATH", "chgk_analysis.db")).expanduser()
+DB_PATH = (
+    _configured_db_path
+    if _configured_db_path.is_absolute()
+    else PROJECT_ROOT / _configured_db_path
+)
 LEGACY_DB_PATH = PROJECT_ROOT / "chgk1.db"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 CHARTS_DIR = OUTPUT_DIR / "charts"

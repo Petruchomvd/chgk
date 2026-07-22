@@ -4,7 +4,7 @@ import json
 import random
 import sqlite3
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 
 
 def get_subcategories_for_categories(
@@ -38,6 +38,7 @@ def count_available_by_category(
     difficulty_range: Optional[Tuple[float, float]] = None,
     author_filter: Optional[str] = None,
     author_filters: Optional[List[str]] = None,
+    technique: Optional[str] = None,
 ) -> int:
     """Количество доступных вопросов по категориям."""
     where_parts = ["1=1"]
@@ -57,7 +58,7 @@ def count_available_by_category(
         params.append(model_name)
 
     if difficulty_range:
-        where_parts.append("p.difficulty BETWEEN ? AND ?")
+        where_parts.append("q.difficulty BETWEEN ? AND ?")
         params.extend(difficulty_range)
 
     if author_filter:
@@ -67,6 +68,11 @@ def count_available_by_category(
         sql_frag, ap = _multi_author_clause(author_filters)
         where_parts.append(sql_frag)
         params.extend(ap)
+    if technique:
+        where_parts.append(
+            "EXISTS (SELECT 1 FROM question_techniques te "
+            "WHERE te.question_id = q.id AND te.primary_technique = ?)")
+        params.append(technique)
 
     where_sql = " AND ".join(where_parts)
     return conn.execute(f"""
@@ -85,6 +91,7 @@ def count_available_random(
     difficulty_range: Optional[Tuple[float, float]] = None,
     author_filter: Optional[str] = None,
     author_filters: Optional[List[str]] = None,
+    technique: Optional[str] = None,
 ) -> int:
     """Количество доступных вопросов (все)."""
     where_parts = ["1=1"]
@@ -92,7 +99,7 @@ def count_available_random(
     need_pack_join = False
 
     if difficulty_range:
-        where_parts.append("p.difficulty BETWEEN ? AND ?")
+        where_parts.append("q.difficulty BETWEEN ? AND ?")
         params.extend(difficulty_range)
         need_pack_join = True
 
@@ -104,6 +111,12 @@ def count_available_random(
         sql_frag, ap = _multi_author_clause(author_filters)
         where_parts.append(sql_frag)
         params.extend(ap)
+
+    if technique:
+        where_parts.append(
+            "EXISTS (SELECT 1 FROM question_techniques te "
+            "WHERE te.question_id = q.id AND te.primary_technique = ?)")
+        params.append(technique)
 
     has_filters = len(where_parts) > 1
     if not has_filters:
@@ -157,8 +170,15 @@ def get_training_questions_by_category(
     seed: Optional[int] = None,
     author_filter: Optional[str] = None,
     author_filters: Optional[List[str]] = None,
+    exclude_ids: Optional[Set[int]] = None,
+    technique: Optional[str] = None,
 ) -> List[Dict]:
-    """Случайные вопросы по категориям."""
+    """Случайные вопросы по категориям.
+
+    exclude_ids — вопросы, которые уже показывали. Нужен для тренировки темы:
+    вопрос ЧГК одноразовый, и повторный показ проверяет память об этом вопросе,
+    а не знание темы. Чтобы подтянуть тему, нужны новые вопросы по ней.
+    """
     where_parts = ["1=1"]
     params: list = []
 
@@ -176,7 +196,7 @@ def get_training_questions_by_category(
         params.append(model_name)
 
     if difficulty_range:
-        where_parts.append("p.difficulty BETWEEN ? AND ?")
+        where_parts.append("q.difficulty BETWEEN ? AND ?")
         params.extend(difficulty_range)
 
     if author_filter:
@@ -186,6 +206,11 @@ def get_training_questions_by_category(
         sql_frag, ap = _multi_author_clause(author_filters)
         where_parts.append(sql_frag)
         params.extend(ap)
+    if technique:
+        where_parts.append(
+            "EXISTS (SELECT 1 FROM question_techniques te "
+            "WHERE te.question_id = q.id AND te.primary_technique = ?)")
+        params.append(technique)
 
     where_sql = " AND ".join(where_parts)
     rows = conn.execute(f"""
@@ -199,6 +224,62 @@ def get_training_questions_by_category(
     """, params).fetchall()
 
     all_ids = [r[0] for r in rows]
+    if exclude_ids:
+        all_ids = [qid for qid in all_ids if qid not in exclude_ids]
+    if not all_ids:
+        return []
+
+    rng = random.Random(seed)
+    sample_ids = rng.sample(all_ids, min(limit, len(all_ids)))
+    return _fetch_full_questions(conn, sample_ids)
+
+
+def get_training_questions_adaptive(
+    conn: sqlite3.Connection,
+    category_ids: Optional[List[int]] = None,
+    take_rate_range: Tuple[float, float] = (0.35, 0.70),
+    limit: int = 10,
+    seed: Optional[int] = None,
+    exclude_ids: Optional[Set[int]] = None,
+    model_name: Optional[str] = None,
+    technique: Optional[str] = None,
+) -> List[Dict]:
+    """Вопросы по темам с ЭМПИРИЧЕСКОЙ сложностью.
+
+    Отличие от get_training_questions_by_category: сложность — не редакторская
+    оценка пакета (q.difficulty), а фактическая беручесть поля по
+    question_result_stats.take_rate. Вопросы, которые поле берёт в 35–70%
+    случаев, — зона ближайшего развития: не гробы и не разминка.
+    """
+    where_parts = ["s.take_rate BETWEEN ? AND ?"]
+    params: list = [take_rate_range[0], take_rate_range[1]]
+
+    if category_ids:
+        placeholders = ",".join("?" * len(category_ids))
+        where_parts.append(f"c.id IN ({placeholders})")
+        params.extend(category_ids)
+    if model_name:
+        where_parts.append("qt.model_name = ?")
+        params.append(model_name)
+    if technique:
+        where_parts.append(
+            "EXISTS (SELECT 1 FROM question_techniques te "
+            "WHERE te.question_id = qt.question_id AND te.primary_technique = ?)")
+        params.append(technique)
+
+    where_sql = " AND ".join(where_parts)
+    rows = conn.execute(f"""
+        SELECT DISTINCT qt.question_id
+        FROM question_topics qt
+        JOIN subcategories sc ON qt.subcategory_id = sc.id
+        JOIN categories c ON sc.category_id = c.id
+        JOIN question_result_stats s ON s.question_id = qt.question_id
+        WHERE {where_sql}
+    """, params).fetchall()
+
+    all_ids = [r[0] for r in rows]
+    if exclude_ids:
+        all_ids = [qid for qid in all_ids if qid not in exclude_ids]
     if not all_ids:
         return []
 
@@ -242,9 +323,8 @@ def get_training_questions_gentleman(
         placeholders = ",".join("?" * len(all_ids))
         rows = conn.execute(f"""
             SELECT q.id FROM questions q
-            JOIN packs p ON q.pack_id = p.id
             WHERE q.id IN ({placeholders})
-              AND p.difficulty BETWEEN ? AND ?
+              AND q.difficulty BETWEEN ? AND ?
         """, all_ids + list(difficulty_range)).fetchall()
         all_ids = [r[0] for r in rows]
         if not all_ids:
@@ -262,6 +342,7 @@ def get_training_questions_random(
     seed: Optional[int] = None,
     author_filter: Optional[str] = None,
     author_filters: Optional[List[str]] = None,
+    technique: Optional[str] = None,
 ) -> List[Dict]:
     """Случайные вопросы из всей базы."""
     where_parts = ["1=1"]
@@ -269,7 +350,7 @@ def get_training_questions_random(
     need_pack_join = False
 
     if difficulty_range:
-        where_parts.append("p.difficulty BETWEEN ? AND ?")
+        where_parts.append("q.difficulty BETWEEN ? AND ?")
         params.extend(difficulty_range)
         need_pack_join = True
 
@@ -281,6 +362,12 @@ def get_training_questions_random(
         sql_frag, ap = _multi_author_clause(author_filters)
         where_parts.append(sql_frag)
         params.extend(ap)
+
+    if technique:
+        where_parts.append(
+            "EXISTS (SELECT 1 FROM question_techniques te "
+            "WHERE te.question_id = q.id AND te.primary_technique = ?)")
+        params.append(technique)
 
     has_filters = len(where_parts) > 1
     if has_filters:
@@ -323,6 +410,7 @@ def _fetch_full_questions(
                q.comment, q.source, q.authors,
                q.razdatka_text, q.razdatka_pic,
                p.title AS pack_title, p.difficulty AS pack_difficulty,
+               q.difficulty AS question_difficulty,
                p.link AS pack_link,
                c.name_ru AS category, s.name_ru AS subcategory,
                pt.confidence

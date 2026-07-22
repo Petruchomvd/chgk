@@ -259,6 +259,45 @@ def _update_leitner(
     )
 
 
+def get_seen_question_ids(conn: sqlite3.Connection, user_id: int) -> set[int]:
+    """Все вопросы, которые пользователь уже видел.
+
+    Нужно для тренировки темы новыми вопросами: показывать заново тот же вопрос
+    ЧГК бессмысленно — его не спросят второй раз, а ответ вспомнится по
+    формулировке, а не по знанию.
+    """
+    rows = conn.execute(
+        "SELECT DISTINCT question_id FROM attempts WHERE user_id = ?", (user_id,)
+    ).fetchall()
+    return {r[0] for r in rows}
+
+
+def get_recent_failed_ids(
+    conn: sqlite3.Connection, user_id: int, limit: int = 30
+) -> list[int]:
+    """Вопросы, где ПОСЛЕДНЯЯ попытка — провал, свежие первыми.
+
+    Исправленные ошибки (провалил, потом взял на повторении) не считаются:
+    смотрим только на актуальное состояние знания.
+    """
+    rows = conn.execute(
+        """
+        SELECT a.question_id
+        FROM attempts a
+        WHERE a.user_id = ?
+          AND a.attempted_at = (
+              SELECT MAX(b.attempted_at) FROM attempts b
+              WHERE b.user_id = a.user_id AND b.question_id = a.question_id
+          )
+          AND a.knew = 0
+        ORDER BY a.attempted_at DESC
+        LIMIT ?
+        """,
+        (user_id, limit),
+    ).fetchall()
+    return [r["question_id"] for r in rows]
+
+
 def get_due_question_ids(
     conn: sqlite3.Connection,
     user_id: int,

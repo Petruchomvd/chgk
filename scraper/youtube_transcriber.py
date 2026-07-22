@@ -1,15 +1,108 @@
 """Скачивание аудио с YouTube и транскрибация через faster-whisper."""
 
 import json
+import os
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import YOUTUBE_AUDIO_DIR, YOUTUBE_TRANSCRIPTS_DIR
+
+
+def _prepare_windows_cuda_path() -> List[str]:
+    """Добавить типовые Windows-пути с CUDA-библиотеками в PATH."""
+    if os.name != "nt":
+        return []
+
+    candidates = []
+    cuda_path = os.environ.get("CUDA_PATH")
+    if cuda_path:
+        candidates.append(Path(cuda_path) / "bin")
+
+    ollama_root = Path.home() / "AppData" / "Local" / "Programs" / "Ollama" / "lib" / "ollama"
+    if ollama_root.exists():
+        candidates.extend(sorted(ollama_root.glob("cuda*/"), reverse=True))
+
+    cuda_toolkit_root = Path("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA")
+    if cuda_toolkit_root.exists():
+        candidates.extend(sorted(cuda_toolkit_root.glob("v*/bin"), reverse=True))
+
+    current_path = os.environ.get("PATH", "")
+    current_parts = current_path.split(os.pathsep) if current_path else []
+    added = []
+
+    for candidate in candidates:
+        candidate_str = str(candidate)
+        if candidate.is_dir() and candidate_str not in current_parts:
+            current_path = candidate_str + os.pathsep + current_path if current_path else candidate_str
+            current_parts.insert(0, candidate_str)
+            added.append(candidate_str)
+
+    if added:
+        os.environ["PATH"] = current_path
+
+    return added
+
+
+def _probe_whisper_model(model: "WhisperModel") -> None:
+    """Сделать короткий пробный прогон, чтобы рано поймать сломанный CUDA runtime."""
+    import numpy as np
+
+    silence = np.zeros(16000, dtype=np.float32)
+    segments, _info = model.transcribe(
+        silence,
+        language="ru",
+        beam_size=1,
+        vad_filter=False,
+    )
+    list(segments)
+
+
+def _load_whisper_model(
+    model_size: str,
+    prefer_device: Optional[str] = None,
+) -> Tuple["WhisperModel", str, str]:
+    """Загрузить Whisper с реальным fallback c GPU на CPU."""
+    from faster_whisper import WhisperModel
+
+    requested = (prefer_device or os.environ.get("WHISPER_DEVICE") or "auto").strip().lower()
+    if requested not in {"auto", "cpu", "cuda", "gpu"}:
+        print(f"[Whisper] Неизвестный WHISPER_DEVICE={requested!r}, использую auto")
+        requested = "auto"
+
+    if requested in {"auto", "cuda", "gpu"}:
+        gpu_model = None
+        try:
+            import ctranslate2
+
+            added_paths = _prepare_windows_cuda_path()
+            ctranslate2.get_supported_compute_types("cuda")
+
+            if added_paths:
+                print(f"[Whisper] Добавил CUDA-пути в PATH: {len(added_paths)}")
+
+            print("[Whisper] Проверяю GPU...")
+            gpu_model = WhisperModel(
+                model_size,
+                device="cuda",
+                compute_type="int8_float16",
+            )
+            _probe_whisper_model(gpu_model)
+            print("[Whisper] Используем GPU (CUDA, int8_float16)")
+            return gpu_model, "cuda", "int8_float16"
+        except Exception as exc:
+            if gpu_model is not None:
+                del gpu_model
+            if requested in {"cuda", "gpu"}:
+                raise RuntimeError(f"Не удалось запустить Whisper на GPU: {exc}") from exc
+            print(f"[Whisper] GPU недоступен, переключаюсь на CPU: {exc}")
+
+    print("[Whisper] Используем CPU (int8)")
+    return WhisperModel(model_size, device="cpu", compute_type="int8"), "cpu", "int8"
 
 
 def _extract_video_id(url: str) -> str:
@@ -140,6 +233,7 @@ def transcribe(
     video_meta: Dict,
     model_size: str = "large-v3",
     chunk_minutes: int = 5,
+    prefer_device: Optional[str] = None,
 ) -> Dict:
     """Транскрибировать аудио через faster-whisper.
 
@@ -150,8 +244,6 @@ def transcribe(
         dict с ключами: video_id, title, url, channel, duration_seconds,
                         segments, full_text, model, transcribed_at
     """
-    from faster_whisper import WhisperModel
-
     video_id = video_meta["video_id"]
     YOUTUBE_TRANSCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
     cache_path = YOUTUBE_TRANSCRIPTS_DIR / f"{video_id}.json"
@@ -161,25 +253,11 @@ def transcribe(
         print(f"[Whisper] Транскрипт уже есть: {cache_path.name}")
         return json.loads(cache_path.read_text(encoding="utf-8"))
 
-    # Определяем устройство
-    device = "cpu"
-    compute_type = "int8"
-    try:
-        import ctranslate2
-        ctranslate2.get_supported_compute_types("cuda")
-        # Добавляем cuBLAS из Ollama в PATH (Windows не находит без этого)
-        import os
-        cublas_dir = os.path.expanduser("~/AppData/Local/Programs/Ollama/lib/ollama/cuda_v12")
-        if os.path.isdir(cublas_dir):
-            os.environ["PATH"] = cublas_dir + os.pathsep + os.environ.get("PATH", "")
-        device = "cuda"
-        compute_type = "int8_float16"  # экономит VRAM на RTX 3050 (4GB)
-        print("[Whisper] Используем GPU (CUDA, int8_float16)")
-    except Exception:
-        print("[Whisper] Используем CPU (int8)")
-
     print(f"[Whisper] Загружаю модель {model_size}...")
-    model = WhisperModel(model_size, device=device, compute_type=compute_type)
+    model, device, _compute_type = _load_whisper_model(
+        model_size,
+        prefer_device=prefer_device,
+    )
 
     import numpy as np
 
@@ -215,12 +293,29 @@ def transcribe(
             print("пусто")
             continue
 
-        segments_raw, info = model.transcribe(
-            chunk_audio,
-            language="ru",
-            beam_size=5,
-            vad_filter=True,
-        )
+        try:
+            segments_raw, info = model.transcribe(
+                chunk_audio,
+                language="ru",
+                beam_size=5,
+                vad_filter=True,
+            )
+        except Exception as exc:
+            if device != "cuda":
+                raise
+
+            print(f"\n[Whisper] GPU-сбой на чанке, переключаюсь на CPU: {exc}")
+            del model
+            model, device, _compute_type = _load_whisper_model(
+                model_size,
+                prefer_device="cpu",
+            )
+            segments_raw, info = model.transcribe(
+                chunk_audio,
+                language="ru",
+                beam_size=5,
+                vad_filter=True,
+            )
         detected_language = info.language
 
         chunk_count = 0

@@ -31,7 +31,7 @@ def run_benchmark(
 
     # Загрузить вопросы
     if question_ids is None:
-        from test_benchmark_ids import BENCHMARK_IDS
+        from scripts.benchmark_ids import BENCHMARK_IDS
         question_ids = BENCHMARK_IDS
 
     placeholders = ",".join("?" * len(question_ids))

@@ -16,7 +16,7 @@ def _make_conn() -> sqlite3.Connection:
         """
         CREATE TABLE packs (
             id INTEGER PRIMARY KEY,
-            title TEXT NOT NULL,
+            title TEXT,
             difficulty REAL,
             link TEXT
         );
@@ -33,7 +33,10 @@ def _make_conn() -> sqlite3.Connection:
             source TEXT,
             authors TEXT,
             razdatka_text TEXT,
-            razdatka_pic TEXT
+            razdatka_pic TEXT,
+            -- Беручесть вопроса: 10 × (1 − доля взявших команд).
+            -- В боевой схеме колонка есть, в этой фикстуре её не хватало.
+            difficulty REAL
         );
         CREATE TABLE question_topics (
             question_id INTEGER,
@@ -90,6 +93,26 @@ def test_search_tournaments_prefers_exact_unicode_match():
         "Балрог-2",
         "Супер Балрог",
     ]
+
+
+def test_search_tournaments_ignores_null_titles():
+    conn = _make_conn()
+    try:
+        conn.execute(
+            "INSERT INTO packs(id, title, difficulty, link) VALUES (?, ?, ?, ?)",
+            (1, None, None, None),
+        )
+        conn.execute(
+            "INSERT INTO questions(id, pack_id, tour_number, number, text, answer) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (11, 1, 1, 1, "Q1", "A1"),
+        )
+
+        results = search_tournaments(conn, "турнир", limit=10)
+    finally:
+        conn.close()
+
+    assert results == []
 
 
 def test_get_recent_tournaments_returns_latest_by_id():

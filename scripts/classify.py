@@ -105,6 +105,12 @@ def main():
         help="Фильтр по автору вопроса q.authors (подстрока, напр. 'Соловьёв')",
     )
     parser.add_argument(
+        "--packs",
+        type=str,
+        default=None,
+        help="Классифицировать только эти пакеты (ID через запятую)",
+    )
+    parser.add_argument(
         "--year",
         type=int,
         default=None,
@@ -126,6 +132,20 @@ def main():
         "--reclassify",
         action="store_true",
         help="Переклассифицировать уже обработанные вопросы (удалить старые + заново)",
+    )
+    parser.add_argument(
+        "--with-stats-only",
+        action="store_true",
+        dest="with_stats_only",
+        help="Только вопросы с турнирной статистикой (take_rate) — "
+             "приоритет для адаптивных тренировок",
+    )
+    parser.add_argument(
+        "--tag",
+        type=str,
+        default=None,
+        help="Версия разметки: метки пишутся в БД под 'model@tag', старые классификации "
+             "модели сохраняются. Позволяет переразмечать постепенно, без удаления.",
     )
     # Legacy-параметры (обратная совместимость)
     parser.add_argument("--groq", action="store_true", help=argparse.SUPPRESS)
@@ -204,11 +224,14 @@ def main():
         twostage=twostage,
         use_dashboard=not args.no_dashboard,
         workers=args.workers,
+        pack_ids=[int(p) for p in args.packs.split(',')] if args.packs else None,
         author_filter=args.author,
         source_model=args.compare_with,
         question_author=args.question_author,
         year=args.year,
         reclassify=args.reclassify,
+        db_tag=args.tag,
+        with_stats_only=args.with_stats_only,
     )
 
 

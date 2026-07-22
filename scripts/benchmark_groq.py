@@ -22,7 +22,7 @@ from classifier.prompts import (
     build_stage2_prompt,
     build_user_message,
 )
-from test_benchmark_ids import BENCHMARK_IDS
+from scripts.benchmark_ids import BENCHMARK_IDS
 
 
 GROQ_MODEL = "llama-3.3-70b-versatile"

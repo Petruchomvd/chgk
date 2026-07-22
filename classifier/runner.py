@@ -106,6 +106,9 @@ def run_classification(
     question_author: str = None,
     year: int = None,
     reclassify: bool = False,
+    pack_ids: list = None,
+    db_tag: str = None,
+    with_stats_only: bool = False,
 ):
     """Главный цикл классификации.
 
@@ -118,20 +121,23 @@ def run_classification(
         use_groq: Использовать Groq API (deprecated, используйте provider)
         provider: Экземпляр BaseLLMProvider (приоритет над model/use_groq)
         workers: Количество параллельных воркеров
+        pack_ids: Классифицировать только эти пакеты
     """
-    conn = get_connection(DB_PATH)
-
     # ── Создание провайдера ──
     if provider is None:
         provider = _create_legacy_provider(model, use_groq)
         if provider is None:
             return
 
-    model_name = provider.config.model
+    # db_tag разводит имя для API и имя в БД: метки пишутся под "model@tag",
+    # старые записи модели не затрагиваются, а выборка неклассифицированных
+    # считается по новому имени — переразметка идёт постепенно, без удаления
+    model_name = provider.config.model + (f"@{db_tag}" if db_tag else "")
     method = _get_method_name(provider, twostage)
 
     # Ограничить воркеров максимумом провайдера
     workers = min(workers, provider.config.max_concurrent)
+    conn = get_connection(DB_PATH, check_same_thread=workers <= 1)
 
     # --reclassify: удалить старые классификации для выбранных вопросов
     if reclassify:
@@ -154,13 +160,15 @@ def run_classification(
     questions = get_unclassified_questions(
         conn, limit=limit, model_name=model_name,
         author_filter=author_filter, source_model=source_model,
-        question_author=question_author, year=year,
+        question_author=question_author, year=year, pack_ids=pack_ids,
+        with_stats_only=with_stats_only,
     )
     total = len(questions)
     total_in_db = get_question_count(conn)
 
     if total == 0:
         print(f"Все вопросы уже классифицированы моделью {model_name}!")
+        conn.close()
         return
 
     # Лог запуска

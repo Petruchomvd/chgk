@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -7,9 +9,13 @@ SCHEMA_PATH = _THIS_DIR / "schema.sql"
 TG_SCHEMA_PATH = _THIS_DIR / "tg_schema.sql"
 
 
-def get_connection(db_path: str | Path) -> sqlite3.Connection:
+def get_connection(
+    db_path: str | Path,
+    *,
+    check_same_thread: bool = True,
+) -> sqlite3.Connection:
     """Создать подключение к БД и применить схему."""
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), check_same_thread=check_same_thread)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.row_factory = sqlite3.Row
@@ -25,7 +31,42 @@ def get_connection(db_path: str | Path) -> sqlite3.Connection:
 
     _migrate_question_topics(conn)
     _migrate_question_difficulty(conn)
+    _migrate_question_position(conn)
+    _migrate_result_position(conn)
+    _migrate_cinema_columns(conn)
     return conn
+
+
+def get_readonly_connection(db_path: str | Path) -> sqlite3.Connection:
+    """Открыть существующую БД без DDL и без возможности записи."""
+    uri = Path(db_path).resolve().as_uri() + "?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _migrate_cinema_columns(conn: sqlite3.Connection) -> None:
+    """Миграция: колонки для людей кино (актёры и режиссёры).
+
+    CREATE TABLE IF NOT EXISTS не добавляет колонки в уже созданную таблицу,
+    поэтому в базах, где cinema_* появились раньше, их нужно дописать.
+    """
+    additions = [
+        ("cinema_entities", "roles", "TEXT"),
+        ("cinema_mentions", "cinema_context", "INTEGER DEFAULT 0"),
+    ]
+    for table, column, decl in additions:
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone()
+        if not exists:
+            continue
+        columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            print(f"[migration] Добавляю колонку {column} в {table}...")
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            conn.commit()
 
 
 def _migrate_question_topics(conn: sqlite3.Connection) -> None:
@@ -43,6 +84,10 @@ def _migrate_question_topics(conn: sqlite3.Connection) -> None:
     ddl = row[0]
     # Если constraint уже содержит model_name — миграция не нужна
     if "method, model_name)" in ddl or "method,model_name)" in ddl:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_qt_model ON question_topics(model_name)"
+        )
+        conn.commit()
         return
 
     print("[migration] Обновляю UNIQUE constraint в question_topics (добавляю model_name)...")
@@ -81,26 +126,76 @@ def _migrate_question_difficulty(conn: sqlite3.Connection) -> None:
     ).fetchone()
     if row is None:
         return
-    if "difficulty" in row[0]:
-        return
-
-    print("[migration] Добавляю колонку difficulty в questions...")
-    conn.execute("ALTER TABLE questions ADD COLUMN difficulty REAL")
+    if "difficulty" not in row[0]:
+        print("[migration] Добавляю колонку difficulty в questions...")
+        conn.execute("ALTER TABLE questions ADD COLUMN difficulty REAL")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_questions_difficulty ON questions(difficulty)")
     conn.commit()
-    print("[migration] Готово.")
+
+
+def _migrate_question_position(conn: sqlite3.Connection) -> None:
+    """Миграция: добавить стабильную позицию вопроса внутри пакета."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='questions'"
+    ).fetchone()
+    if row is None:
+        return
+    if "position_in_pack" not in row[0]:
+        print("[migration] Добавляю position_in_pack в questions...")
+        conn.execute("ALTER TABLE questions ADD COLUMN position_in_pack INTEGER")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_questions_pack_position "
+        "ON questions(pack_id, position_in_pack)"
+    )
+    conn.commit()
+
+
+def _migrate_result_position(conn: sqlite3.Connection) -> None:
+    """Миграция: отделить позицию в маске от позиции на странице пакета."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master "
+        "WHERE type='table' AND name='question_result_stats'"
+    ).fetchone()
+    if row is None or "result_position" in row[0]:
+        return
+    conn.execute(
+        "ALTER TABLE question_result_stats ADD COLUMN result_position INTEGER"
+    )
+    conn.execute(
+        "UPDATE question_result_stats SET result_position = position_in_pack "
+        "WHERE result_position IS NULL"
+    )
+    conn.commit()
 
 
 # --------------- Пакеты ---------------
 
-def upsert_pack(conn: sqlite3.Connection, data: Dict[str, Any]) -> bool:
+def upsert_pack(
+    conn: sqlite3.Connection,
+    data: Dict[str, Any],
+    *,
+    commit: bool = True,
+) -> bool:
     """Вставить или обновить пакет."""
     try:
         conn.execute(
-            """INSERT OR REPLACE INTO packs
+            """INSERT INTO packs
                (id, title, question_count, start_date, end_date,
-                published_date, teams_played, difficulty, authors, link, parse_status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                published_date, teams_played, difficulty, authors, link,
+                parse_status, error_message)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                   title = COALESCE(excluded.title, packs.title),
+                   question_count = COALESCE(excluded.question_count, packs.question_count),
+                   start_date = COALESCE(excluded.start_date, packs.start_date),
+                   end_date = COALESCE(excluded.end_date, packs.end_date),
+                   published_date = COALESCE(excluded.published_date, packs.published_date),
+                   teams_played = COALESCE(excluded.teams_played, packs.teams_played),
+                   difficulty = COALESCE(excluded.difficulty, packs.difficulty),
+                   authors = COALESCE(excluded.authors, packs.authors),
+                   link = COALESCE(excluded.link, packs.link),
+                   parse_status = excluded.parse_status,
+                   error_message = COALESCE(excluded.error_message, packs.error_message)""",
             (
                 data["id"],
                 data.get("title"),
@@ -113,24 +208,34 @@ def upsert_pack(conn: sqlite3.Connection, data: Dict[str, Any]) -> bool:
                 data.get("authors"),
                 data.get("link"),
                 data.get("parse_status", "parsed"),
+                data.get("error_message"),
             ),
         )
-        conn.commit()
+        if commit:
+            conn.commit()
         return True
     except Exception as e:
+        if commit:
+            conn.rollback()
         print(f"Ошибка upsert_pack #{data['id']}: {e}")
         return False
 
 
 def mark_pack_status(
-    conn: sqlite3.Connection, pack_id: int, status: str, error: Optional[str] = None
+    conn: sqlite3.Connection,
+    pack_id: int,
+    status: str,
+    error: Optional[str] = None,
+    *,
+    commit: bool = True,
 ) -> None:
     """Обновить статус парсинга пакета."""
     conn.execute(
         "UPDATE packs SET parse_status = ?, error_message = ? WHERE id = ?",
         (status, error, pack_id),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def get_pending_pack_ids(conn: sqlite3.Connection) -> List[int]:
@@ -151,17 +256,23 @@ def get_parsed_pack_ids(conn: sqlite3.Connection) -> set:
 
 # --------------- Вопросы ---------------
 
-def insert_questions(conn: sqlite3.Connection, questions: List[Dict[str, Any]]) -> int:
+def insert_questions(
+    conn: sqlite3.Connection,
+    questions: List[Dict[str, Any]],
+    *,
+    commit: bool = True,
+    strict: bool = False,
+) -> int:
     """Вставить список вопросов (пропускает дубликаты)."""
     inserted = 0
     for q in questions:
         try:
-            conn.execute(
+            cursor = conn.execute(
                 """INSERT OR IGNORE INTO questions
                    (id, pack_id, number, tour_number, text, answer,
                     zachet, nezachet, comment, source, authors,
-                    razdatka_text, razdatka_pic)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    razdatka_text, razdatka_pic, position_in_pack)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     q["id"],
                     q["pack_id"],
@@ -176,12 +287,16 @@ def insert_questions(conn: sqlite3.Connection, questions: List[Dict[str, Any]]) 
                     q.get("authors"),
                     q.get("razdatka_text"),
                     q.get("razdatka_pic"),
+                    q.get("position_in_pack"),
                 ),
             )
-            inserted += 1
+            inserted += max(cursor.rowcount, 0)
         except Exception as e:
+            if strict:
+                raise
             print(f"Ошибка insert question #{q.get('id')}: {e}")
-    conn.commit()
+    if commit:
+        conn.commit()
     return inserted
 
 
@@ -194,6 +309,8 @@ def get_unclassified_questions(
     source_model: Optional[str] = None,
     question_author: Optional[str] = None,
     year: Optional[int] = None,
+    pack_ids: Optional[List[int]] = None,
+    with_stats_only: bool = False,
 ) -> List[Dict[str, Any]]:
     """Получить вопросы для классификации.
 
@@ -204,6 +321,11 @@ def get_unclassified_questions(
     question_author — фильтр по автору вопроса q.authors (LIKE '%..%').
     source_model — только вопросы, уже классифицированные этой моделью.
     year — фильтр по году пакета (p.start_date).
+    pack_ids — только вопросы этих пакетов: нужно, когда разбирают конкретный
+    турнир и классифицировать всю базу ради него незачем.
+    with_stats_only — только вопросы с турнирной статистикой (take_rate):
+    именно они питают адаптивные тренировки, поэтому при ограниченном
+    бюджете классификации их размечают в первую очередь.
     """
     order = "RANDOM()" if random_order else "q.id"
 
@@ -224,6 +346,14 @@ def get_unclassified_questions(
             pack_join = "JOIN packs p ON q.pack_id = p.id"
         extra_where.append("p.start_date >= ? AND p.start_date < ?")
         extra_params.extend([f"{year}-01-01", f"{year + 1}-01-01"])
+    if pack_ids:
+        marks = ",".join("?" for _ in pack_ids)
+        extra_where.append(f"q.pack_id IN ({marks})")
+        extra_params.extend(pack_ids)
+    if with_stats_only:
+        extra_where.append(
+            "EXISTS (SELECT 1 FROM question_result_stats st WHERE st.question_id = q.id)"
+        )
     if source_model:
         extra_where.append(
             "q.id IN (SELECT DISTINCT question_id FROM question_topics WHERE model_name = ?)"

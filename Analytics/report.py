@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import DB_PATH
 from database.db import get_connection
-from analytics.queries import (
+from Analytics.queries import (
     category_stats,
     difficulty_by_category,
     top_categories,

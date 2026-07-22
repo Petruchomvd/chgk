@@ -22,7 +22,9 @@ from app.training_engine import (
     start_by_category,
     start_by_tournament,
     start_random,
+    start_followup,
     start_review,
+    start_team_gap,
     submit_answer,
 )
 from bot.keyboards import (
@@ -132,6 +134,10 @@ async def cb_mode(cb: CallbackQuery, state: FSMContext) -> None:
         await _ask_tournament(cb, state)
     elif mode == "review":
         await _start_session_review(cb, state)
+    elif mode == "team_gap":
+        await _start_session_team_gap(cb, state)
+    elif mode == "followup":
+        await _start_session_followup(cb, state)
     await cb.answer()
 
 
@@ -359,6 +365,53 @@ async def _start_tournament_session(
     else:
         await message.answer(text)
     await _show_question(message, state, user_id)
+
+
+async def _start_session_team_gap(cb: CallbackQuery, state: FSMContext) -> None:
+    chgk_conn = _get_chgk_conn()
+    tconn = get_training_connection()
+    try:
+        session = start_team_gap(chgk_conn, tconn, cb.from_user.id, count=DEFAULT_COUNT)
+    except FileNotFoundError:
+        await cb.message.edit_text(
+            "Профиль слабых тем не найден. Сначала построй его: "
+            "python scripts/team_gap.py --team-id ... --packs ..."
+        )
+        await state.clear()
+        return
+    finally:
+        chgk_conn.close()
+        tconn.close()
+
+    if not session.questions:
+        await cb.message.edit_text("Не нашлось подходящих вопросов по слабым темам.")
+        await state.clear()
+        return
+
+    _set_session(cb.from_user.id, session)
+    await cb.message.edit_text(f"Старт: {session.filters_repr}")
+    await _show_question(cb.message, state, cb.from_user.id)
+
+
+async def _start_session_followup(cb: CallbackQuery, state: FSMContext) -> None:
+    chgk_conn = _get_chgk_conn()
+    tconn = get_training_connection()
+    try:
+        session = start_followup(chgk_conn, tconn, cb.from_user.id, count=DEFAULT_COUNT)
+    finally:
+        chgk_conn.close()
+        tconn.close()
+
+    if not session.questions:
+        await cb.message.edit_text(
+            f"Не из чего собрать: {session.filters_repr}."
+        )
+        await state.clear()
+        return
+
+    _set_session(cb.from_user.id, session)
+    await cb.message.edit_text(f"Старт: {session.filters_repr}")
+    await _show_question(cb.message, state, cb.from_user.id)
 
 
 async def _start_session_review(cb: CallbackQuery, state: FSMContext) -> None:

@@ -87,7 +87,7 @@ def build_diverse_sample(conn, size: int = 50, seed: int = None) -> list[dict]:
 def save_benchmark_ids(ids: list[int], path: Path = None):
     """Сохранить ID в test_benchmark_ids.py."""
     if path is None:
-        path = Path(__file__).parent.parent / "test_benchmark_ids.py"
+        path = Path(__file__).parent / "benchmark_ids.py"
 
     # Форматируем по 8 ID в строку
     lines = []

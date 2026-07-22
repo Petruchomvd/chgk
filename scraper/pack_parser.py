@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 
 from bs4 import BeautifulSoup
 
+from scraper.date_utils import parse_russian_date
+
 
 def _extract_push_blocks(html: str) -> List[str]:
     """Извлечь содержимое self.__next_f.push([...]) блоков.
@@ -183,8 +185,6 @@ def extract_pack_metadata_from_html(html: str, pack_id: int) -> Dict[str, Any]:
             value = children[-1].get_text(separator=" ", strip=True)
             info_map[key] = value
 
-    from modules_pars.utils import parse_date
-
     def _find(substrings):
         for k, v in info_map.items():
             if any(s in k for s in substrings):
@@ -223,9 +223,9 @@ def extract_pack_metadata_from_html(html: str, pack_id: int) -> Dict[str, Any]:
         "id": pack_id,
         "title": json_title or bs4_title,
         "question_count": _first_int(_find(["вопр"])),
-        "start_date": json_start_date or parse_date(_find(["начал"])),
-        "end_date": json_end_date or parse_date(_find(["окон", "заверш"])),
-        "published_date": json_pub_date or parse_date(_find(["опублик", "публика"])),
+        "start_date": json_start_date or parse_russian_date(_find(["начал"])),
+        "end_date": json_end_date or parse_russian_date(_find(["окон", "заверш"])),
+        "published_date": json_pub_date or parse_russian_date(_find(["опублик", "публика"])),
         "teams_played": _sum_ints(_find(["команд"])),
         "difficulty": _avg_floats(_find(["сложн"])),
         "authors": ", ".join(authors) if authors else None,
@@ -234,7 +234,12 @@ def extract_pack_metadata_from_html(html: str, pack_id: int) -> Dict[str, Any]:
     }
 
 
-def normalize_question(q: Dict[str, Any], pack_id: int, tour_number: int = 0) -> Dict[str, Any]:
+def normalize_question(
+    q: Dict[str, Any],
+    pack_id: int,
+    tour_number: int = 0,
+    position_in_pack: Optional[int] = None,
+) -> Dict[str, Any]:
     """Привести вопрос к формату БД."""
     authors_str = None
     if q.get("authors"):
@@ -254,6 +259,7 @@ def normalize_question(q: Dict[str, Any], pack_id: int, tour_number: int = 0) ->
         "authors": authors_str,
         "razdatka_text": q.get("razdatkaText") or None,
         "razdatka_pic": q.get("razdatkaPic") or None,
+        "position_in_pack": position_in_pack,
     }
 
 

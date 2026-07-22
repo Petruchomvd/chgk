@@ -1,0 +1,296 @@
+{
+ "team_id": 97700,
+ "team_title": "Королёвские особи",
+ "source": "rating.chgk masks (team_history.py)",
+ "tournaments": [
+  {
+   "title": "Поволжская Лига",
+   "date": "2024-02-11",
+   "score": 15,
+   "questions": 72,
+   "expected": 23.2,
+   "deficit": -8.2,
+   "matched_pack": null
+  },
+  {
+   "title": "IX Интеллектуальная Олимпиада ПФО среди студентов",
+   "date": "2024-04-26",
+   "score": 36,
+   "questions": 80,
+   "expected": 39.6,
+   "deficit": -3.6,
+   "matched_pack": null
+  },
+  {
+   "title": "Турнир по \"Что? Где? Когда?\" в рамках Х Интеллектуальной олимпиады ПФО",
+   "date": "2025-04-24",
+   "score": 57,
+   "questions": 90,
+   "expected": 43.5,
+   "deficit": 13.5,
+   "matched_pack": null
+  },
+  {
+   "title": "B-52: S01E01 (асинхрон)",
+   "date": "2026-01-14",
+   "score": 17,
+   "questions": 36,
+   "expected": 23.5,
+   "deficit": -6.5,
+   "matched_pack": 6666
+  },
+  {
+   "title": "Турнир по \"Что? Где? Когда?\" в рамках ХI Интеллектуальной олимпиады ПФО",
+   "date": "2026-03-27",
+   "score": 47,
+   "questions": 80,
+   "expected": 48.2,
+   "deficit": -1.2,
+   "matched_pack": null
+  },
+  {
+   "title": "Крафтик №2",
+   "date": "2026-04-18",
+   "score": 14,
+   "questions": 36,
+   "expected": 20.2,
+   "deficit": -6.2,
+   "matched_pack": 6862
+  }
+ ],
+ "questions_total": 394,
+ "took": 186,
+ "expected": 198.32,
+ "per_question_avg": -0.031,
+ "calibration": [
+  {
+   "band": [
+    0.0,
+    0.2
+   ],
+   "questions": 80,
+   "field_rate": 0.104,
+   "team_rate": 0.087,
+   "lift": -0.016,
+   "deficit": -1.3
+  },
+  {
+   "band": [
+    0.2,
+    0.4
+   ],
+   "questions": 74,
+   "field_rate": 0.295,
+   "team_rate": 0.23,
+   "lift": -0.066,
+   "deficit": -4.86
+  },
+  {
+   "band": [
+    0.4,
+    0.6
+   ],
+   "questions": 87,
+   "field_rate": 0.493,
+   "team_rate": 0.425,
+   "lift": -0.068,
+   "deficit": -5.92
+  },
+  {
+   "band": [
+    0.6,
+    0.8
+   ],
+   "questions": 65,
+   "field_rate": 0.708,
+   "team_rate": 0.677,
+   "lift": -0.031,
+   "deficit": -2.04
+  },
+  {
+   "band": [
+    0.8,
+    1.0
+   ],
+   "questions": 88,
+   "field_rate": 0.9,
+   "team_rate": 0.92,
+   "lift": 0.02,
+   "deficit": 1.79
+  }
+ ],
+ "calibration_model": {
+  "a": -0.1963,
+  "b": 1.0701,
+  "n": 394
+ },
+ "focus_band": [
+  0.3,
+  0.6
+ ],
+ "matched_questions": 144,
+ "categories": [
+  {
+   "category": "Природа и животные",
+   "questions": 2,
+   "took": 0,
+   "expected": 0.84,
+   "deficit": -0.84,
+   "per_question": -0.422
+  },
+  {
+   "category": "Быт и повседневность",
+   "questions": 6,
+   "took": 1,
+   "expected": 3.44,
+   "deficit": -2.44,
+   "per_question": -0.407
+  },
+  {
+   "category": "Кино и театр",
+   "questions": 13,
+   "took": 1,
+   "expected": 5.55,
+   "deficit": -4.55,
+   "per_question": -0.35
+  },
+  {
+   "category": "Наука и технологии",
+   "questions": 7,
+   "took": 1,
+   "expected": 3.16,
+   "deficit": -2.16,
+   "per_question": -0.308
+  },
+  {
+   "category": "Музыка",
+   "questions": 5,
+   "took": 1,
+   "expected": 2.54,
+   "deficit": -1.54,
+   "per_question": -0.307
+  },
+  {
+   "category": "История",
+   "questions": 13,
+   "took": 4,
+   "expected": 7.61,
+   "deficit": -3.61,
+   "per_question": -0.278
+  },
+  {
+   "category": "Логика и wordplay",
+   "questions": 21,
+   "took": 5,
+   "expected": 10.58,
+   "deficit": -5.58,
+   "per_question": -0.266
+  },
+  {
+   "category": "Общество и политика",
+   "questions": 4,
+   "took": 1,
+   "expected": 2.04,
+   "deficit": -1.04,
+   "per_question": -0.259
+  },
+  {
+   "category": "Язык и лингвистика",
+   "questions": 7,
+   "took": 3,
+   "expected": 4.69,
+   "deficit": -1.69,
+   "per_question": -0.241
+  },
+  {
+   "category": "Спорт",
+   "questions": 1,
+   "took": 0,
+   "expected": 0.22,
+   "deficit": -0.22,
+   "per_question": -0.221
+  },
+  {
+   "category": "Религия и мифология",
+   "questions": 4,
+   "took": 1,
+   "expected": 1.86,
+   "deficit": -0.86,
+   "per_question": -0.215
+  },
+  {
+   "category": "География",
+   "questions": 2,
+   "took": 0,
+   "expected": 0.41,
+   "deficit": -0.41,
+   "per_question": -0.205
+  },
+  {
+   "category": "Литература",
+   "questions": 13,
+   "took": 3,
+   "expected": 5.55,
+   "deficit": -2.55,
+   "per_question": -0.196
+  },
+  {
+   "category": "Искусство",
+   "questions": 1,
+   "took": 1,
+   "expected": 0.78,
+   "deficit": 0.22,
+   "per_question": 0.225
+  }
+ ],
+ "techniques": [
+  {
+   "technique": "цитата",
+   "questions": 2,
+   "took": 0,
+   "expected": 0.88,
+   "deficit": -0.88,
+   "per_question": -0.441
+  },
+  {
+   "technique": "раздатка",
+   "questions": 13,
+   "took": 3,
+   "expected": 6.77,
+   "deficit": -3.77,
+   "per_question": -0.29
+  },
+  {
+   "technique": "пропуск",
+   "questions": 10,
+   "took": 4,
+   "expected": 6.36,
+   "deficit": -2.36,
+   "per_question": -0.236
+  },
+  {
+   "technique": "чистый",
+   "questions": 85,
+   "took": 28,
+   "expected": 43.33,
+   "deficit": -15.33,
+   "per_question": -0.18
+  },
+  {
+   "technique": "замена",
+   "questions": 31,
+   "took": 13,
+   "expected": 15.37,
+   "deficit": -2.37,
+   "per_question": -0.077
+  },
+  {
+   "technique": "блиц",
+   "questions": 3,
+   "took": 1,
+   "expected": 1.23,
+   "deficit": -0.23,
+   "per_question": -0.076
+  }
+ ]
+}

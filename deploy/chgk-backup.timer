@@ -1,0 +1,11 @@
+[Unit]
+Description=Create a daily protected CHGK database snapshot
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=20m
+Persistent=true
+Unit=chgk-backup.service
+
+[Install]
+WantedBy=timers.target

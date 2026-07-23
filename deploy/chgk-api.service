@@ -1,0 +1,24 @@
+[Unit]
+Description=CHGK personal web API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=chgk
+Group=chgk
+WorkingDirectory=/opt/chgk/current
+EnvironmentFile=/etc/chgk/chgk.env
+ExecStart=/opt/chgk/venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/chgk
+
+[Install]
+WantedBy=multi-user.target
+

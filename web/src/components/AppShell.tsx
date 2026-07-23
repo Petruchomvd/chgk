@@ -10,10 +10,12 @@ import {
   Compass,
   Target,
   GraduationCap,
+  LogOut,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { num } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/auth/AuthContext'
 
 interface NavItem {
   to: string
@@ -51,6 +53,7 @@ function DueBadge({ value, dark }: { value: number; dark?: boolean }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const { user, logout } = useAuth()
   const { data: overview } = useQuery({
     queryKey: ['overview'],
     queryFn: api.overview,
@@ -115,18 +118,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Состояние базы — постоянный контекст, а не украшение. */}
-        {meta && (
-          <div className="border-t border-ink-line px-5 py-3.5 text-2xs text-ink-muted">
-            <div className="tabular flex justify-between">
-              <span>Вопросов</span>
-              <span className="text-paper/80">{num(meta.total_questions)}</span>
+        <div className="border-t border-ink-line">
+          {meta && (
+            <div className="px-5 py-3 text-2xs text-ink-muted">
+              <div className="tabular flex justify-between">
+                <span>Вопросов</span>
+                <span className="text-paper/80">{num(meta.total_questions)}</span>
+              </div>
+              <div className="tabular mt-1 flex justify-between">
+                <span>Размечено</span>
+                <span className="text-paper/80">{meta.classification_pct}%</span>
+              </div>
             </div>
-            <div className="tabular mt-1 flex justify-between">
-              <span>Размечено</span>
-              <span className="text-paper/80">{meta.classification_pct}%</span>
+          )}
+          <div className="flex items-center gap-2 border-t border-ink-line px-3 py-2.5">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-sm bg-amber/15 text-xs font-semibold text-amber-soft">
+              {user.display_name.slice(0, 1).toUpperCase()}
             </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-medium text-paper">{user.display_name}</div>
+              <div className="truncate text-2xs text-ink-muted">@{user.username}</div>
+            </div>
+            <button
+              onClick={() => void logout()}
+              className="flex size-7 items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-ink-soft hover:text-paper"
+              aria-label="Выйти"
+              title="Выйти"
+            >
+              <LogOut className="size-3.5" strokeWidth={1.7} />
+            </button>
           </div>
-        )}
+        </div>
       </aside>
 
       {/* ─── Мобильная шапка ────────────────────────────────────── */}
@@ -136,6 +158,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <span className="font-serif text-sm font-semibold text-paper">Картотека</span>
         <span className="text-2xs tracking-wide text-ink-muted uppercase">ЧГК</span>
+        <span className="ml-auto text-2xs text-ink-muted">{user.display_name}</span>
+        <button
+          onClick={() => void logout()}
+          className="text-ink-muted"
+          aria-label="Выйти"
+        >
+          <LogOut className="size-4" strokeWidth={1.7} />
+        </button>
       </header>
 
       <main className="min-w-0 flex-1 pb-16 lg:pb-0">{children}</main>

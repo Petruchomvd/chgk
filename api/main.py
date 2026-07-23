@@ -15,22 +15,35 @@ import sqlite3
 import sys
 import time
 import uuid
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from api import catalog
+from api.auth import (
+    COOKIE_NAME,
+    CSRF_HEADER,
+    active_user,
+    authenticate,
+    cookie_secure,
+    create_session,
+    require_current_user,
+    reset_current_user,
+    session_from_request,
+    set_current_user,
+)
 from app import study
 from app import training_engine as engine
 from config import DB_PATH, PROJECT_ROOT
 from database.training_db import (
     TRAINING_DB_PATH,
-    _legacy_user_id,
     count_due,
     get_stats,
     get_training_connection,
@@ -46,8 +59,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-USER_ID = _legacy_user_id()
 
 # Измеренные на турнирах слабости команды: файл готовит scripts/team_gap.py.
 # ID команды в рейтинге ЧГК; если файла нет, интерфейс просто не покажет раздел.
@@ -65,6 +76,126 @@ def _ensure_training_schema() -> None:
 
 
 _ensure_training_schema()
+
+_login_failures: dict[str, deque[float]] = defaultdict(deque)
+_LOGIN_WINDOW_SECONDS = 10 * 60
+_LOGIN_MAX_FAILURES = 5
+_PUBLIC_API_PATHS = {"/api/auth/login", "/api/auth/session"}
+
+
+def _client_key(request: Request) -> str:
+    return request.headers.get("x-real-ip") or (
+        request.client.host if request.client else "unknown"
+    )
+
+
+def _prune_failures(key: str) -> deque[float]:
+    now = time.monotonic()
+    failures = _login_failures[key]
+    while failures and failures[0] < now - _LOGIN_WINDOW_SECONDS:
+        failures.popleft()
+    return failures
+
+
+@app.middleware("http")
+async def authenticate_api_request(request: Request, call_next):
+    """Защитить API подписанной сессией и CSRF-токеном."""
+    if not request.url.path.startswith("/api/") or request.url.path in _PUBLIC_API_PATHS:
+        return await call_next(request)
+
+    signed_user = session_from_request(request)
+    user = active_user(signed_user) if signed_user else None
+    if user is None:
+        return JSONResponse({"detail": "Требуется войти"}, status_code=401)
+
+    if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+        if not secrets_compare(
+            request.headers.get(CSRF_HEADER, ""), user.csrf_token
+        ):
+            return JSONResponse(
+                {"detail": "Сессия устарела. Обновите страницу."},
+                status_code=403,
+            )
+
+    token = set_current_user(user)
+    try:
+        return await call_next(request)
+    finally:
+        reset_current_user(token)
+
+
+def secrets_compare(left: str, right: str) -> bool:
+    """Сравнение без утечки времени; вынесено для простого тестирования."""
+    import hmac
+
+    return bool(left and right) and hmac.compare_digest(left, right)
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+    remember: bool = True
+
+
+def _user_payload(user, csrf_token: str) -> Dict[str, Any]:
+    return {
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "display_name": user.display_name,
+            "role": user.role,
+        },
+        "csrf_token": csrf_token,
+    }
+
+
+@app.post("/api/auth/login")
+def auth_login(req: LoginRequest, request: Request, response: Response):
+    key = _client_key(request)
+    failures = _prune_failures(key)
+    if len(failures) >= _LOGIN_MAX_FAILURES:
+        raise HTTPException(
+            429, "Слишком много попыток. Попробуйте снова через 10 минут."
+        )
+
+    user = authenticate(req.username, req.password)
+    if user is None:
+        failures.append(time.monotonic())
+        raise HTTPException(401, "Неверный логин или пароль")
+
+    _login_failures.pop(key, None)
+    session_token, csrf_token, max_age = create_session(user, req.remember)
+    response.set_cookie(
+        COOKIE_NAME,
+        session_token,
+        max_age=max_age if req.remember else None,
+        httponly=True,
+        secure=cookie_secure(),
+        samesite="lax",
+        path="/",
+    )
+    return _user_payload(user, csrf_token)
+
+
+@app.get("/api/auth/session")
+def auth_session(request: Request):
+    signed_user = session_from_request(request)
+    user = active_user(signed_user) if signed_user else None
+    if user is None:
+        raise HTTPException(401, "Требуется войти")
+    return _user_payload(user, user.csrf_token)
+
+
+@app.post("/api/auth/logout")
+def auth_logout(response: Response):
+    response.delete_cookie(
+        COOKIE_NAME,
+        path="/",
+        secure=cookie_secure(),
+        httponly=True,
+        samesite="lax",
+    )
+    return {"ok": True}
 
 
 def chgk_conn() -> sqlite3.Connection:
@@ -86,14 +217,15 @@ def chgk_conn() -> sqlite3.Connection:
 # Результаты каждой попытки при этом сразу пишутся в training.db,
 # поэтому перезапуск сервера теряет только незавершённую сессию.
 
-_SESSIONS: Dict[str, engine.TrainingSession] = {}
+_SESSIONS: Dict[str, tuple[int, engine.TrainingSession]] = {}
 
 
 def _session_or_404(session_id: str) -> engine.TrainingSession:
-    s = _SESSIONS.get(session_id)
-    if s is None:
+    item = _SESSIONS.get(session_id)
+    user_id = require_current_user().id
+    if item is None or item[0] != user_id:
         raise HTTPException(404, "Сессия не найдена")
-    return s
+    return item[1]
 
 
 def _question_payload(q: Dict[str, Any]) -> Dict[str, Any]:
@@ -146,23 +278,24 @@ def meta():
 
 @app.get("/api/overview")
 def overview():
+    user_id = require_current_user().id
     conn = chgk_conn()
     tconn = get_training_connection()
     try:
-        stats = get_stats(tconn, USER_ID)
+        stats = get_stats(tconn, user_id)
         base = get_overview_stats(conn)
         active = [
             {"session_id": sid, **_state(sid, s)}
-            for sid, s in _SESSIONS.items()
-            if not s.is_finished()
+            for sid, (owner_id, s) in _SESSIONS.items()
+            if owner_id == user_id and not s.is_finished()
         ]
         return {
-            "due_count": count_due(tconn, USER_ID),
+            "due_count": count_due(tconn, user_id),
             "stats": stats,
             "base": base,
-            "weak_categories": catalog.weak_categories(conn, USER_ID),
-            "recent": catalog.recent_attempts(conn, USER_ID),
-            "activity": catalog.activity_by_day(conn, USER_ID),
+            "weak_categories": catalog.weak_categories(conn, user_id),
+            "recent": catalog.recent_attempts(conn, user_id),
+            "activity": catalog.activity_by_day(conn, user_id),
             "active_session": active[0] if active else None,
         }
     finally:
@@ -188,6 +321,7 @@ def questions(
     limit: int = Query(40, le=100),
     offset: int = 0,
 ):
+    user_id = require_current_user().id
     conn = chgk_conn()
     try:
         kwargs = dict(
@@ -197,9 +331,9 @@ def questions(
             author=author, status=status, model_name=model_name,
         )
         items = catalog.search_catalog(
-            conn, USER_ID, sort=sort, limit=limit, offset=offset, **kwargs
+            conn, user_id, sort=sort, limit=limit, offset=offset, **kwargs
         )
-        total = catalog.count_catalog(conn, USER_ID, **kwargs)
+        total = catalog.count_catalog(conn, user_id, **kwargs)
         return {"items": items, "total": total, "limit": limit, "offset": offset}
     finally:
         conn.close()
@@ -207,9 +341,10 @@ def questions(
 
 @app.get("/api/questions/{question_id}")
 def question(question_id: int):
+    user_id = require_current_user().id
     conn = chgk_conn()
     try:
-        q = catalog.get_question(conn, USER_ID, question_id)
+        q = catalog.get_question(conn, user_id, question_id)
         if q is None:
             raise HTTPException(404, "Вопрос не найден")
         return q
@@ -461,9 +596,10 @@ def study_fact(answer: str = Query(..., description="ответ (канон-кл
 
 @app.get("/api/topics")
 def topics(model_name: Optional[str] = None):
+    user_id = require_current_user().id
     conn = chgk_conn()
     try:
-        return {"categories": catalog.topics_tree(conn, USER_ID, model_name)}
+        return {"categories": catalog.topics_tree(conn, user_id, model_name)}
     finally:
         conn.close()
 
@@ -496,6 +632,7 @@ class StartRequest(BaseModel):
 
 @app.post("/api/training/start")
 def training_start(req: StartRequest):
+    user_id = require_current_user().id
     conn = chgk_conn()
     tconn = get_training_connection()
     try:
@@ -517,19 +654,19 @@ def training_start(req: StartRequest):
             if not req.category_ids:
                 raise HTTPException(400, "Не выбрана ни одна тема")
             s = engine.start_weak_topics(
-                conn, tconn, USER_ID, req.category_ids, req.count, req.seed, rng,
+                conn, tconn, user_id, req.category_ids, req.count, req.seed, rng,
                 technique=req.technique,
             )
         elif req.mode == "team_gap":
-            s = engine.start_team_gap(conn, tconn, USER_ID, req.count, req.seed)
+            s = engine.start_team_gap(conn, tconn, user_id, req.count, req.seed)
         elif req.mode == "followup":
-            s = engine.start_followup(conn, tconn, USER_ID, req.count)
+            s = engine.start_followup(conn, tconn, user_id, req.count)
         elif req.mode == "study_fact":
             if not req.answer:
                 raise HTTPException(400, "Не указан факт для тренировки")
             s = engine.start_by_answer(conn, req.answer, req.count, req.seed)
         elif req.mode == "review":
-            s = engine.start_review(conn, tconn, USER_ID, req.count)
+            s = engine.start_review(conn, tconn, user_id, req.count)
         else:
             raise HTTPException(400, f"Неизвестный режим: {req.mode}")
 
@@ -539,7 +676,7 @@ def training_start(req: StartRequest):
             )
 
         session_id = uuid.uuid4().hex[:12]
-        _SESSIONS[session_id] = s
+        _SESSIONS[session_id] = (user_id, s)
         return _state(session_id, s)
     finally:
         conn.close()
@@ -572,7 +709,9 @@ def training_grade(session_id: str, req: GradeRequest):
     s = _session_or_404(session_id)
     tconn = get_training_connection()
     try:
-        engine.record_and_advance(s, tconn, USER_ID, req.knew)
+        engine.record_and_advance(
+            s, tconn, require_current_user().id, req.knew
+        )
         return _state(session_id, s)
     finally:
         tconn.close()

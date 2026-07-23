@@ -53,6 +53,32 @@ CREATE INDEX IF NOT EXISTS idx_leitner_review ON leitner(next_review_at);
 CREATE INDEX IF NOT EXISTS idx_leitner_user_review ON leitner(user_id, next_review_at);
 """
 
+_USERS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id              INTEGER PRIMARY KEY,
+    username        TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    display_name    TEXT NOT NULL,
+    password_hash   BLOB NOT NULL,
+    password_salt   BLOB NOT NULL,
+    role            TEXT NOT NULL DEFAULT 'player',
+    active          INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_identities (
+    user_id              INTEGER NOT NULL,
+    provider             TEXT NOT NULL,
+    provider_user_id     TEXT NOT NULL,
+    created_at           TEXT NOT NULL,
+    PRIMARY KEY (provider, provider_user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_identities_user
+ON user_identities(user_id);
+"""
+
 LEITNER_INTERVALS_DAYS = {1: 1, 2: 3, 3: 7, 4: 14, 5: 30}
 MAX_BOX = 5
 
@@ -187,6 +213,7 @@ def _migrate_leitner(conn: sqlite3.Connection) -> None:
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     _migrate_attempts(conn)
     _migrate_leitner(conn)
+    conn.executescript(_USERS_SCHEMA)
     conn.commit()
 
 

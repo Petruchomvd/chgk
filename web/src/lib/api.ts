@@ -207,10 +207,29 @@ export class ApiError extends Error {
   }
 }
 
+export interface AuthUser {
+  id: number
+  username: string
+  display_name: string
+  role: 'owner' | 'player'
+}
+
+export interface AuthSession {
+  user: AuthUser
+  csrf_token: string
+}
+
+let csrfToken = ''
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+      ...init?.headers,
+    },
   })
   if (!res.ok) {
     let detail = `Ошибка ${res.status}`
@@ -220,9 +239,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* тело не JSON — оставляем код */
     }
+    if (res.status === 401 && !path.startsWith('/api/auth/')) {
+      window.dispatchEvent(new Event('chgk:session-expired'))
+    }
     throw new ApiError(detail, res.status)
   }
   return res.json() as Promise<T>
+}
+
+async function authRequest(
+  path: string,
+  init?: RequestInit,
+): Promise<AuthSession> {
+  const session = await request<AuthSession>(path, init)
+  csrfToken = session.csrf_token
+  return session
 }
 
 export interface CatalogFilters {
@@ -410,6 +441,16 @@ export interface SemanticResponse {
 }
 
 export const api = {
+  authSession: () => authRequest('/api/auth/session'),
+  login: (username: string, password: string, remember: boolean) =>
+    authRequest('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, remember }),
+    }),
+  logout: async () => {
+    await request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' })
+    csrfToken = ''
+  },
   meta: () => request<Meta>('/api/meta'),
   overview: () => request<Overview>('/api/overview'),
   questions: (f: CatalogFilters) => request<CatalogPage>(`/api/questions${qs(f)}`),

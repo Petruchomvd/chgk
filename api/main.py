@@ -150,6 +150,7 @@ class CreatePlayerRequest(BaseModel):
     display_name: str
     password: str
     telegram_id: Optional[int] = None
+    vk_id: Optional[int] = None
 
 
 def _user_payload(user, csrf_token: str) -> Dict[str, Any]:
@@ -228,6 +229,8 @@ def create_player(req: CreatePlayerRequest):
         raise HTTPException(400, "Укажите имя игрока")
     if req.telegram_id is not None and req.telegram_id <= 0:
         raise HTTPException(400, "Telegram ID должен быть положительным числом")
+    if req.vk_id is not None and req.vk_id <= 0:
+        raise HTTPException(400, "VK ID должен быть положительным числом")
 
     conn = get_training_connection()
     try:
@@ -267,11 +270,20 @@ def create_player(req: CreatePlayerRequest):
                     """,
                     (user_id, str(req.telegram_id), now),
                 )
+            if req.vk_id is not None:
+                conn.execute(
+                    """
+                    INSERT INTO user_identities (
+                        user_id, provider, provider_user_id, created_at
+                    ) VALUES (?, 'vk', ?, ?)
+                    """,
+                    (user_id, str(req.vk_id), now),
+                )
             conn.commit()
         except sqlite3.IntegrityError as exc:
             conn.rollback()
             raise HTTPException(
-                409, "Такой логин или Telegram ID уже используется"
+                409, "Такой логин, Telegram ID или VK ID уже используется"
             ) from exc
     finally:
         conn.close()

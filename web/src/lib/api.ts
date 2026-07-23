@@ -512,6 +512,7 @@ export const api = {
     display_name: string
     password: string
     telegram_id?: number | null
+    vk_id?: number | null
   }) =>
     request<{
       id: number

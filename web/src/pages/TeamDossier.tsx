@@ -206,6 +206,7 @@ export function TeamDossier() {
     username: '',
     password: '',
     telegram_id: '',
+    vk_id: '',
   })
   const { data, isPending, error, fetchStatus, refetch } = useQuery({
     queryKey: ['team-dossier'],
@@ -226,9 +227,18 @@ export function TeamDossier() {
         telegram_id: playerForm.telegram_id.trim()
           ? Number(playerForm.telegram_id)
           : null,
+        vk_id: playerForm.vk_id.trim()
+          ? Number(playerForm.vk_id)
+          : null,
       }),
     onSuccess: () => {
-      setPlayerForm({ display_name: '', username: '', password: '', telegram_id: '' })
+      setPlayerForm({
+        display_name: '',
+        username: '',
+        password: '',
+        telegram_id: '',
+        vk_id: '',
+      })
       setShowCreatePlayer(false)
       queryClient.invalidateQueries({ queryKey: ['team-dossier'] })
     },
@@ -340,6 +350,18 @@ export function TeamDossier() {
                     setPlayerForm((form) => ({ ...form, telegram_id: event.target.value }))
                   }
                   placeholder="Для общей истории с ботом"
+                />
+              </label>
+              <label className="space-y-1 text-2xs font-medium">
+                <span>VK ID <span className="font-normal text-muted-foreground">необязательно</span></span>
+                <Input
+                  type="number"
+                  min={1}
+                  value={playerForm.vk_id}
+                  onChange={(event) =>
+                    setPlayerForm((form) => ({ ...form, vk_id: event.target.value }))
+                  }
+                  placeholder="Для общей истории с VK-ботом"
                 />
               </label>
             </div>

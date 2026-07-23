@@ -5,6 +5,7 @@ This file is the canonical map of the project after cleanup work.
 ## Active product path
 
 - `bot/`: Telegram training bot.
+- `vk_bot/`: VK training bot.
 - `app/`: training and study business logic.
 - `database/`: SQLite access and schemas.
 - `scraper/`: current HTTP-based parsers and runners.
@@ -49,3 +50,11 @@ The current scraper stack no longer depends on `modules_pars/`, and benchmark id
 - `CHGK_BOT_ALLOWED_TG_IDS`: allowlist for team usage in private chat.
 - `CHGK_TG_BOT_TOKEN` / `CHGK_TG_CHAT_ID`: notifier flow.
 - `TG_DIGEST_BOT_TOKEN` / `TG_DIGEST_CHAT_ID`: digest/posting scripts.
+
+## VK env vars
+
+- `CHGK_VK_BOT_TOKEN`: VK community access token for the training bot.
+- `CHGK_VK_GROUP_ID`: VK community id used by long polling.
+- `CHGK_VK_OWNER_USER_ID`: owner VK user id.
+- `CHGK_VK_ALLOWED_USER_IDS`: allowlist for private VK chats.
+- `CHGK_VK_REMINDER_HOUR`: optional daily reminder hour.

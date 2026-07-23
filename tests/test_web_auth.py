@@ -141,10 +141,24 @@ def test_login_cookie_and_csrf_protect_api(tmp_path, monkeypatch):
                 "username": "anna",
                 "display_name": "Анна",
                 "password": "temporary password",
+                "vk_id": 9001,
             },
         )
         assert created.status_code == 200
         assert created.json()["id"] < 0
+        conn = connection()
+        try:
+            identity = conn.execute(
+                """
+                SELECT user_id
+                FROM user_identities
+                WHERE provider = 'vk' AND provider_user_id = '9001'
+                """
+            ).fetchone()
+        finally:
+            conn.close()
+        assert identity is not None
+        assert identity["user_id"] == created.json()["id"]
         assert (
             client.post(
                 "/api/admin/users",
@@ -153,6 +167,19 @@ def test_login_cookie_and_csrf_protect_api(tmp_path, monkeypatch):
                     "username": "anna",
                     "display_name": "Анна",
                     "password": "temporary password",
+                },
+            ).status_code
+            == 409
+        )
+        assert (
+            client.post(
+                "/api/admin/users",
+                headers={"X-CSRF-Token": csrf},
+                json={
+                    "username": "vera",
+                    "display_name": "Вера",
+                    "password": "temporary password",
+                    "vk_id": 9001,
                 },
             ).status_code
             == 409

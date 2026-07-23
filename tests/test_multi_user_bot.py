@@ -8,6 +8,11 @@ from database.training_db import (
     get_training_connection,
     record_attempt,
 )
+from vk_bot.main import (
+    get_reminder_hour,
+    parse_allowed_user_ids as parse_allowed_vk_user_ids,
+    resolve_training_user_id,
+)
 
 
 def test_parse_allowed_user_ids_merges_allowlist_and_owner():
@@ -26,6 +31,17 @@ def test_get_bot_token_uses_only_chgk_bot_token():
     }
 
     assert get_bot_token(env) == "primary-token"
+
+
+def test_parse_allowed_vk_user_ids_and_reminder_hour():
+    env = {
+        "CHGK_VK_ALLOWED_USER_IDS": "2001, 2002; 2003\n2004",
+        "CHGK_VK_OWNER_USER_ID": "99",
+        "CHGK_VK_REMINDER_HOUR": "20",
+    }
+
+    assert parse_allowed_vk_user_ids(env) == {99, 2001, 2002, 2003, 2004}
+    assert get_reminder_hour(env) == 20
 
 
 def test_training_progress_isolated_between_users(tmp_path):
@@ -69,6 +85,41 @@ def test_training_progress_isolated_between_users(tmp_path):
     assert [(row["user_id"], row["question_id"], row["box"]) for row in leitner_rows] == [
         (1, 77, 1),
     ]
+
+
+def test_vk_identity_resolves_to_shared_training_user(tmp_path, monkeypatch):
+    db_path = tmp_path / "training.db"
+
+    def connection():
+        return get_training_connection(db_path)
+
+    monkeypatch.setattr("vk_bot.main.get_training_connection", connection)
+
+    conn = connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, display_name, password_hash, password_salt,
+                role, active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'player', 1, ?, ?)
+            """,
+            (-1, "anna", "Анна", b"digest", b"salt", "2026-07-24", "2026-07-24"),
+        )
+        conn.execute(
+            """
+            INSERT INTO user_identities (
+                user_id, provider, provider_user_id, created_at
+            ) VALUES (?, 'vk', ?, ?)
+            """,
+            (-1, "9001", "2026-07-24"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert resolve_training_user_id(9001) == -1
+    assert resolve_training_user_id(9002) == 9002
 
 
 def test_legacy_training_db_is_migrated_to_owner(tmp_path, monkeypatch):

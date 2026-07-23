@@ -1,22 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import {
   ArrowRight,
-  BookOpenText,
-  Brain,
   Eye,
   EyeOff,
-  KeyRound,
-  ShieldCheck,
-  Users,
 } from 'lucide-react'
 import { ApiError, api, type AuthSession } from '@/lib/api'
 import { cn } from '@/lib/utils'
-
-const LOGIN_STATS = [
-  { icon: BookOpenText, value: '212 000+', label: 'вопросов' },
-  { icon: Brain, value: '9 режимов', label: 'тренировки' },
-  { icon: Users, value: 'Одна команда', label: 'общая цель' },
-]
 
 export function Login({
   onSuccess,
@@ -68,37 +57,17 @@ export function Login({
             </div>
           </div>
 
-          <div className="my-auto py-12">
-            <div className="mb-5 flex items-center gap-2 text-xs font-medium tracking-wide text-amber-soft uppercase">
-              <span className="h-px w-8 bg-amber" />
-              Пространство команды
-            </div>
-            <h1 className="max-w-xl font-serif text-[clamp(2.55rem,5vw,4.9rem)] leading-[0.96] font-semibold tracking-[-0.04em] text-paper">
-              Думать вместе.
-              <br />
-              <span className="text-amber-soft">Помнить больше.</span>
-            </h1>
-            <p className="mt-7 max-w-lg text-[15px] leading-7 text-ink-muted">
-              Вопросы, тренировки и прогресс команды — в одной спокойной
-              рабочей среде.
-            </p>
-
-            <div className="mt-10 grid max-w-xl gap-3 sm:grid-cols-3">
-              {LOGIN_STATS.map(({ icon: ItemIcon, value, label }) => {
-                return (
-                  <div className="login-stat" key={value}>
-                    <ItemIcon className="size-4 text-amber-soft" strokeWidth={1.6} />
-                    <div className="mt-4 text-sm font-medium text-paper">{value}</div>
-                    <div className="mt-1 text-2xs text-ink-muted">{label}</div>
-                  </div>
-                )
-              })}
-            </div>
+          <div className="login-symbol my-auto" aria-hidden>
+            ?
           </div>
 
-          <div className="flex items-center gap-2 text-2xs text-ink-muted">
-            <ShieldCheck className="size-3.5 text-amber-soft" strokeWidth={1.7} />
-            Доступ только для участников команды
+          <div>
+            <div className="font-serif text-xl font-semibold text-paper">
+              База вопросов
+            </div>
+            <div className="mt-1.5 text-xs text-ink-muted">
+              Тренировки и прогресс
+            </div>
           </div>
         </div>
       </section>
@@ -113,14 +82,11 @@ export function Login({
           </div>
 
           <div className="mb-9">
-            <div className="mb-5 flex size-11 items-center justify-center rounded-md border border-border bg-paper-raised shadow-sm">
-              <KeyRound className="size-5 text-amber-ink" strokeWidth={1.7} />
-            </div>
             <h2 className="font-serif text-[30px] leading-tight font-semibold tracking-tight text-foreground">
-              Добро пожаловать
+              Вход
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Войдите в свой аккаунт, чтобы продолжить тренировку.
+              Введите логин и пароль.
             </p>
           </div>
 
@@ -172,7 +138,7 @@ export function Login({
                 onChange={(event) => setRemember(event.target.checked)}
                 className="login-checkbox"
               />
-              Запомнить меня на 30 дней
+              Не выходить на этом устройстве
             </label>
 
             {error ? (
@@ -194,10 +160,6 @@ export function Login({
             </button>
           </form>
 
-          <p className="mt-8 border-t border-border pt-5 text-2xs leading-5 text-muted-foreground">
-            Нет аккаунта? Обратитесь к Матвею — регистрация пока доступна только
-            по приглашению.
-          </p>
         </div>
       </section>
     </main>

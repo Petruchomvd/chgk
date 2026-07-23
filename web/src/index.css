@@ -279,12 +279,13 @@
   opacity: 0.45;
 }
 
-.login-stat {
-  min-height: 118px;
-  padding: 1rem;
-  border: 1px solid var(--ink-line);
-  background: hsl(214 26% 20% / 0.52);
-  backdrop-filter: blur(8px);
+.login-symbol {
+  font-family: var(--font-serif);
+  font-size: clamp(15rem, 32vw, 34rem);
+  line-height: 0.72;
+  color: hsl(38 50% 66% / 0.08);
+  user-select: none;
+  transform: translateX(-0.06em);
 }
 
 .login-form-panel {

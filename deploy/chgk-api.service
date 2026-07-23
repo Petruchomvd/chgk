@@ -21,4 +21,3 @@ ReadWritePaths=/var/lib/chgk
 
 [Install]
 WantedBy=multi-user.target
-

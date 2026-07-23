@@ -35,6 +35,7 @@ log = logging.getLogger("chgk_vk_bot")
 
 API_VERSION = "5.199"
 DEFAULT_COUNT = 12
+PUBLIC_URL = os.environ.get("CHGK_PUBLIC_URL", "https://play.nordvel.ru").rstrip("/")
 REMINDER_TEXT = (
     "Сегодняшняя тренировка ждёт. 12 вопросов хватит, чтобы держать форму."
 )
@@ -178,7 +179,7 @@ class VkApi:
         self.call("messages.send", **params)
 
 
-def _button(label: str, command: str, color: str = "secondary") -> dict[str, Any]:
+def _text_button(label: str, command: str, color: str = "secondary") -> dict[str, Any]:
     return {
         "action": {
             "type": "text",
@@ -189,46 +190,78 @@ def _button(label: str, command: str, color: str = "secondary") -> dict[str, Any
     }
 
 
-def keyboard(rows: list[list[tuple[str, str, str]]], one_time: bool = False) -> dict[str, Any]:
+def _link_button(label: str, link: str) -> dict[str, Any]:
+    return {
+        "action": {
+            "type": "open_link",
+            "label": label,
+            "link": link,
+        }
+    }
+
+
+def keyboard(rows: list[list[dict[str, Any]]], one_time: bool = False) -> dict[str, Any]:
     return {
         "one_time": one_time,
         "inline": False,
-        "buttons": [[_button(*item) for item in row] for row in rows],
+        "buttons": rows,
     }
 
 
 def main_keyboard() -> dict[str, Any]:
     return keyboard([
-        [("Тренировка", "train", "primary")],
-        [("Повторение", "review", "secondary"), ("Статистика", "stats", "secondary")],
+        [_text_button("Тренировка", "train", "primary")],
+        [
+            _text_button("Повторение", "review", "secondary"),
+            _text_button("Статистика", "stats", "secondary"),
+        ],
+        [_link_button("Открыть сайт", PUBLIC_URL)],
     ])
 
 
 def modes_keyboard() -> dict[str, Any]:
     return keyboard([
-        [("Случайные", "mode_random", "primary"), ("Размеченные", "mode_marked", "secondary")],
-        [("Повторение", "mode_review", "secondary"), ("Ошибки", "mode_followup", "secondary")],
-        [("Слабые темы", "mode_team_gap", "secondary")],
-        [("Отмена", "cancel", "negative")],
+        [
+            _text_button("Случайные", "mode_random", "primary"),
+            _text_button("Размеченные", "mode_marked", "secondary"),
+        ],
+        [
+            _text_button("Повторение", "mode_review", "secondary"),
+            _text_button("Ошибки", "mode_followup", "secondary"),
+        ],
+        [_text_button("Слабые темы", "mode_team_gap", "secondary")],
+        [
+            _text_button("Меню", "menu", "secondary"),
+            _text_button("Отмена", "cancel", "negative"),
+        ],
     ])
 
 
 def reveal_keyboard() -> dict[str, Any]:
     return keyboard([
-        [("Показать ответ", "reveal", "primary"), ("Прервать", "abort", "negative")],
+        [
+            _text_button("Показать ответ", "reveal", "primary"),
+            _text_button("Прервать", "abort", "negative"),
+        ],
     ])
 
 
 def assessment_keyboard() -> dict[str, Any]:
     return keyboard([
-        [("Знал", "knew", "positive"), ("Не знал", "didnt", "negative")],
-        [("Прервать", "abort", "negative")],
+        [
+            _text_button("Знал", "knew", "positive"),
+            _text_button("Не знал", "didnt", "negative"),
+        ],
+        [_text_button("Прервать", "abort", "negative")],
     ])
 
 
 def finish_keyboard() -> dict[str, Any]:
     return keyboard([
-        [("Ещё тренировку", "train", "primary"), ("Меню", "menu", "secondary")],
+        [
+            _text_button("Ещё тренировку", "train", "primary"),
+            _text_button("Меню", "menu", "secondary"),
+        ],
     ])
 
 
@@ -246,12 +279,14 @@ def _normalize_command(message: VkMessage) -> str:
         "меню": "menu",
         "помощь": "menu",
         "help": "menu",
+        "управление": "menu",
         "тренировка": "train",
         "train": "train",
         "повторение": "review",
         "review": "review",
         "статистика": "stats",
         "stats": "stats",
+        "прогресс": "stats",
         "отмена": "cancel",
         "cancel": "cancel",
     }
@@ -361,7 +396,10 @@ class ChgkVkBot:
         suffix = f"\nК повторению сейчас: {due}" if due else ""
         self.api.send_message(
             message.peer_id,
-            "Картотека ЧГК. Выбирай режим тренировки." + suffix,
+            "Картотека ЧГК\n\n"
+            "Здесь можно тренироваться, повторять ошибки и смотреть прогресс."
+            f"{suffix}\n\n"
+            "Выбери действие:",
             main_keyboard(),
         )
 

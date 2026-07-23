@@ -10,6 +10,7 @@ from database.training_db import (
 )
 from vk_bot.main import (
     get_reminder_hour,
+    main_keyboard,
     parse_allowed_user_ids as parse_allowed_vk_user_ids,
     resolve_training_user_id,
 )
@@ -42,6 +43,24 @@ def test_parse_allowed_vk_user_ids_and_reminder_hour():
 
     assert parse_allowed_vk_user_ids(env) == {99, 2001, 2002, 2003, 2004}
     assert get_reminder_hour(env) == 20
+
+
+def test_vk_main_keyboard_has_training_controls_and_site_link():
+    buttons = main_keyboard()["buttons"]
+
+    labels = [
+        button["action"]["label"]
+        for row in buttons
+        for button in row
+    ]
+    action_types = [
+        button["action"]["type"]
+        for row in buttons
+        for button in row
+    ]
+
+    assert labels == ["Тренировка", "Повторение", "Статистика", "Открыть сайт"]
+    assert action_types == ["text", "text", "text", "open_link"]
 
 
 def test_training_progress_isolated_between_users(tmp_path):

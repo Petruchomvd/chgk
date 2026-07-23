@@ -62,7 +62,7 @@ export function Search() {
 
       {data && !isFetching && !data.available && (
         <p className="text-xs text-muted-foreground">
-          Векторы не построены: <code>python scripts/build_embeddings.py</code>
+          Поиск по смыслу доступен только там, где установлена модель и лежат векторы.
         </p>
       )}
 

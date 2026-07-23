@@ -185,13 +185,14 @@ export function SemanticMap() {
       ) : isPending || !data ? (
         <>
           <p className="mb-2 text-2xs text-muted-foreground">
-            Первая загрузка считает проекцию на сервере — секунд десять…
+            Загружаем готовую проекцию…
           </p>
           <BlockSkeleton className="h-[560px]" />
         </>
       ) : !data.available ? (
         <p className="text-xs text-muted-foreground">
-          Векторы не построены: <code>python scripts/build_embeddings.py</code>
+          Карта ещё не выгружена с Mac. Подготовьте её командой{' '}
+          <code>python scripts/export_semantic_map.py</code>.
         </p>
       ) : (
         <div className="grid gap-3 md:grid-cols-[1fr_220px]">

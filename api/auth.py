@@ -202,6 +202,18 @@ def require_current_user() -> AuthUser:
     return user
 
 
+def require_owner() -> AuthUser:
+    """Разрешить действие только владельцу пространства.
+
+    Проверка живёт на сервере: скрытая ссылка в интерфейсе не считается
+    защитой, потому что любой адрес API можно вызвать напрямую.
+    """
+    user = require_current_user()
+    if user.role != "owner":
+        raise HTTPException(403, "Раздел доступен только владельцу")
+    return user
+
+
 def set_current_user(user: AuthUser):
     return _current_user.set(user)
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Target, TrendingDown, Trophy, Crosshair } from 'lucide-react'
+import { Target, TrendingDown, Trophy, Crosshair, Users } from 'lucide-react'
 import { api, type CalibrationBand } from '@/lib/api'
 import { Page } from '@/components/AppShell'
 import { ErrorState, BlockSkeleton, loadError } from '@/components/States'
@@ -10,6 +10,17 @@ import { Input } from '@/components/ui/input'
 
 const pct = (x: number) => `${Math.round(x * 100)}%`
 const signed = (x: number, digits = 1) => `${x >= 0 ? '+' : ''}${x.toFixed(digits)}`
+
+function relativeActivity(value: string | null) {
+  if (!value) return 'ещё не тренировался'
+  const days = Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000)
+  if (days <= 0) return 'сегодня'
+  if (days === 1) return 'вчера'
+  if (days < 7) return `${days} дн. назад`
+  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(
+    new Date(value),
+  )
+}
 
 function deltaClass(x: number) {
   return x >= 0 ? 'text-emerald-600' : 'text-rose-600'
@@ -221,6 +232,58 @@ export function TeamDossier() {
         сравнение с полем на тех же вопросах, а не самооценка. Данные —{' '}
         <code>scripts/team_history.py</code>.
       </p>
+
+      <section className="mb-7">
+        <div className="mb-2 flex items-center gap-1.5">
+          <Users className="size-4 text-amber-ink" aria-hidden />
+          <h2 className="text-sm font-semibold">Тренировки игроков</h2>
+        </div>
+        <p className="mb-3 text-2xs text-muted-foreground">
+          Активность на сайте и в подключённых ботах хранится в общей истории игрока.
+        </p>
+        <div className="overflow-hidden rounded-lg border border-border bg-paper-raised">
+          <div className="hidden grid-cols-[minmax(140px,1fr)_100px_90px_90px_100px] gap-3 border-b border-border px-3.5 py-2 text-2xs font-medium tracking-wide text-muted-foreground uppercase sm:grid">
+            <span>Игрок</span>
+            <span className="text-right">За 7 дней</span>
+            <span className="text-right">Всего</span>
+            <span className="text-right">Успех</span>
+            <span className="text-right">Последняя</span>
+          </div>
+          <ul className="divide-y divide-border">
+            {(data.players ?? []).map((player) => (
+              <li
+                key={player.id}
+                className="grid gap-2 px-3.5 py-3 text-xs sm:grid-cols-[minmax(140px,1fr)_100px_90px_90px_100px] sm:items-center sm:gap-3"
+              >
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{player.display_name}</div>
+                  <div className="truncate text-2xs text-muted-foreground">
+                    @{player.username}{player.role === 'owner' ? ' · владелец' : ''}
+                  </div>
+                </div>
+                <div className="flex justify-between sm:block sm:text-right">
+                  <span className="text-2xs text-muted-foreground sm:hidden">За 7 дней</span>
+                  <span className="tabular">{player.attempts_7d}</span>
+                </div>
+                <div className="flex justify-between sm:block sm:text-right">
+                  <span className="text-2xs text-muted-foreground sm:hidden">Вопросов</span>
+                  <span className="tabular">{player.questions}</span>
+                </div>
+                <div className="flex justify-between sm:block sm:text-right">
+                  <span className="text-2xs text-muted-foreground sm:hidden">Успех</span>
+                  <span className="tabular">
+                    {player.success_pct === null ? '—' : `${Math.round(player.success_pct)}%`}
+                  </span>
+                </div>
+                <div className="flex justify-between text-2xs text-muted-foreground sm:block sm:text-right">
+                  <span className="sm:hidden">Последняя</span>
+                  <span>{relativeActivity(player.last_attempt_at)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
 
       <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label="сыграно" value={`${data.questions_total}`} />

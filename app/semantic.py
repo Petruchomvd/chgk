@@ -8,7 +8,11 @@
 
 from __future__ import annotations
 
+import importlib.util
+import json
+import os
 import threading
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -17,6 +21,12 @@ from config import PROJECT_ROOT
 
 EMB_DIR = PROJECT_ROOT / "data" / "embeddings" / "e5s-qac"
 MODEL_NAME = "intfloat/multilingual-e5-small"
+MAP_EXPORT_PATH = Path(
+    os.environ.get(
+        "CHGK_SEMANTIC_MAP_PATH",
+        PROJECT_ROOT / "data" / "embeddings" / "semantic-map.json",
+    )
+).expanduser()
 
 _lock = threading.Lock()
 _ids: Optional[np.ndarray] = None
@@ -26,6 +36,16 @@ _model = None
 
 def available() -> bool:
     return any(EMB_DIR.glob("part_*.npz"))
+
+
+def map_available() -> bool:
+    """Карта может работать по готовой лёгкой выгрузке без векторов."""
+    return MAP_EXPORT_PATH.is_file() or available()
+
+
+def text_search_available() -> bool:
+    """Произвольный поиск требует и векторов, и модели кодирования запроса."""
+    return available() and importlib.util.find_spec("sentence_transformers") is not None
 
 
 def _ensure_vectors():
@@ -85,6 +105,13 @@ def map_points(n: int = 30000,
     key = (n, model_label)
     if key in _map_cache:
         return _map_cache[key]
+
+    # На небольшом сервере не держим ~320 МБ векторов ради уже построенной
+    # двухмерной карты. Выгрузка готовится на Mac и содержит только точки.
+    if MAP_EXPORT_PATH.is_file():
+        result = json.loads(MAP_EXPORT_PATH.read_text(encoding="utf-8"))
+        _map_cache[key] = result
+        return result
 
     import re
     import sqlite3

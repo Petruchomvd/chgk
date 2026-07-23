@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -35,6 +36,7 @@ from api.auth import (
     cookie_secure,
     create_session,
     require_current_user,
+    require_owner,
     reset_current_user,
     session_from_request,
     set_current_user,
@@ -51,6 +53,7 @@ from database.training_db import (
 from dashboard.db_queries import get_all_categories, get_available_models, get_overview_stats
 
 app = FastAPI(title="ЧГК · Картотека")
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Vite dev-сервер.
 app.add_middleware(
@@ -254,6 +257,8 @@ def _state(session_id: str, s: engine.TrainingSession) -> Dict[str, Any]:
 
 @app.get("/api/meta")
 def meta():
+    from app import semantic
+
     conn = chgk_conn()
     try:
         stats = get_overview_stats(conn)
@@ -271,6 +276,10 @@ def meta():
             "classified": stats["classified"],
             "classification_pct": stats["classification_pct"],
             "with_difficulty": with_difficulty,
+            "features": {
+                "semantic_map": semantic.map_available(),
+                "semantic_search": semantic.text_search_available(),
+            },
         }
     finally:
         conn.close()
@@ -410,10 +419,11 @@ def question_similar(question_id: int, top: int = 10):
 
 @app.get("/api/semantic/map")
 def semantic_map():
-    """Точки смысловой карты. Первый вызов считает проекцию (~10 с), дальше кэш."""
+    """Точки смысловой карты владельца из готовой серверной выгрузки."""
     from app import semantic
 
-    if not semantic.available():
+    require_owner()
+    if not semantic.map_available():
         return {"available": False, "points": []}
     return semantic.map_points()
 
@@ -423,7 +433,8 @@ def semantic_search(q: str, top: int = 20):
     """Поиск по смыслу. Первый вызов грузит модель (несколько секунд)."""
     from app import semantic
 
-    if not semantic.available():
+    require_owner()
+    if not semantic.text_search_available():
         return {"available": False, "items": []}
     q = q.strip()
     if len(q) < 3:
@@ -480,12 +491,58 @@ def weak_topics():
     }
 
 
+def _player_activity() -> list[dict[str, Any]]:
+    """Короткая сводка активности аккаунтов для владельца команды."""
+    conn = get_training_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                u.id,
+                u.username,
+                u.display_name,
+                u.role,
+                COUNT(a.id) AS attempts,
+                COUNT(DISTINCT a.question_id) AS questions,
+                COALESCE(SUM(a.knew), 0) AS correct,
+                MAX(a.attempted_at) AS last_attempt_at,
+                COALESCE(SUM(
+                    CASE WHEN a.attempted_at >= datetime('now', '-7 days')
+                         THEN 1 ELSE 0 END
+                ), 0) AS attempts_7d
+            FROM users u
+            LEFT JOIN attempts a ON a.user_id = u.id
+            WHERE u.active = 1
+            GROUP BY u.id, u.username, u.display_name, u.role
+            ORDER BY
+                CASE WHEN MAX(a.attempted_at) IS NULL THEN 1 ELSE 0 END,
+                MAX(a.attempted_at) DESC,
+                u.display_name COLLATE NOCASE
+            """
+        ).fetchall()
+        return [
+            {
+                **dict(row),
+                "success_pct": (
+                    round(100 * row["correct"] / row["attempts"], 1)
+                    if row["attempts"]
+                    else None
+                ),
+            }
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
 @app.get("/api/team/dossier")
 def team_dossier():
     """Полное досье команды: история турниров, калибровочная кривая, модель,
     разрез по темам и приёмам. Файл готовит scripts/team_history.py."""
+    require_owner()
+    players = _player_activity()
     if not TEAM_GAPS_PATH.exists():
-        return {"available": False}
+        return {"available": False, "players": players}
     data = json.loads(TEAM_GAPS_PATH.read_text(encoding="utf-8"))
     return {
         "available": True,
@@ -502,12 +559,14 @@ def team_dossier():
         "matched_questions": data.get("matched_questions"),
         "categories": data.get("categories", []),
         "techniques": data.get("techniques", []),
+        "players": players,
     }
 
 
 @app.get("/api/team/forecast")
 def team_forecast(pack: int = Query(..., description="pack_id из БД")):
     """Прогноз счёта команды на пакете по калибровочной модели + swing-вопросы."""
+    require_owner()
     if not TEAM_GAPS_PATH.exists():
         raise HTTPException(status_code=404, detail="нет профиля команды")
     data = json.loads(TEAM_GAPS_PATH.read_text(encoding="utf-8"))

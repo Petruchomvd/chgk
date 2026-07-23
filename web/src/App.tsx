@@ -1,11 +1,11 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import {
   QueryClient,
   QueryClientProvider,
   onlineManager,
   useQuery,
 } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { AppShell } from '@/components/AppShell'
 import { AuthProvider } from '@/auth/AuthContext'
 import { ApiError, api, type AuthSession } from '@/lib/api'
@@ -16,11 +16,19 @@ import { Topics } from '@/pages/Topics'
 import { Training } from '@/pages/Training'
 import { Session } from '@/pages/Session'
 import { Review } from '@/pages/Review'
-import { Search } from '@/pages/Search'
-import { SemanticMap } from '@/pages/SemanticMap'
-import { TeamDossier } from '@/pages/TeamDossier'
 import { Study } from '@/pages/Study'
 import { Login } from '@/pages/Login'
+import { useAuth } from '@/auth/AuthContext'
+
+// Тяжёлые аналитические разделы нужны только владельцу. Игроки не скачивают
+// код карты и прогнозов вместе с первым экраном тренировки.
+const Search = lazy(() => import('@/pages/Search').then((m) => ({ default: m.Search })))
+const SemanticMap = lazy(() =>
+  import('@/pages/SemanticMap').then((m) => ({ default: m.SemanticMap })),
+)
+const TeamDossier = lazy(() =>
+  import('@/pages/TeamDossier').then((m) => ({ default: m.TeamDossier })),
+)
 
 // Приложение ходит только на localhost, поэтому «офлайн» в понимании
 // React Query здесь не применим: в этом состоянии запрос уходит в
@@ -75,7 +83,11 @@ function AuthGate() {
     try {
       await api.logout()
     } finally {
-      queryClient.clear()
+      // Не удаляем активный auth-запрос вместе с его наблюдателем: иначе
+      // оболочка остаётся на экране до ручного обновления страницы.
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== 'auth-session',
+      })
       queryClient.setQueryData(['auth-session'], null)
     }
   }
@@ -122,13 +134,33 @@ function AuthGate() {
             <Route path="/training" element={<Training />} />
             <Route path="/training/:sessionId" element={<Session />} />
             <Route path="/review" element={<Review />} />
-            <Route path="/search" element={<Search />} />
-            <Route path="/map" element={<SemanticMap />} />
-            <Route path="/team" element={<TeamDossier />} />
+            <Route path="/search" element={<OwnerRoute><LazyPage><Search /></LazyPage></OwnerRoute>} />
+            <Route path="/map" element={<OwnerRoute><LazyPage><SemanticMap /></LazyPage></OwnerRoute>} />
+            <Route path="/team" element={<OwnerRoute><LazyPage><TeamDossier /></LazyPage></OwnerRoute>} />
             <Route path="/study" element={<Study />} />
+            <Route path="*" element={<Navigate to="/training" replace />} />
           </Routes>
         </AppShell>
       </BrowserRouter>
     </AuthProvider>
+  )
+}
+
+function OwnerRoute({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth()
+  return user.role === 'owner' ? children : <Navigate to="/training" replace />
+}
+
+function LazyPage({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-[880px] px-4 py-8 text-xs text-muted-foreground">
+          Загружаем раздел…
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
   )
 }

@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import {
   LayoutList,
   Library,
@@ -11,6 +12,8 @@ import {
   Target,
   GraduationCap,
   LogOut,
+  Menu,
+  X,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { num } from '@/lib/format'
@@ -25,16 +28,19 @@ interface NavItem {
   badge?: (due: number) => number | null
 }
 
-const NAV: NavItem[] = [
-  { to: '/', label: 'Обзор', icon: LayoutList },
-  { to: '/catalog', label: 'Картотека', icon: Library },
-  { to: '/topics', label: 'Темы', icon: Layers },
-  { to: '/team', label: 'Досье команды', icon: Target },
-  { to: '/search', label: 'Поиск по смыслу', icon: Sparkles },
-  { to: '/map', label: 'Карта', icon: Compass },
-  { to: '/study', label: 'Учить', icon: GraduationCap },
+const PRIMARY_NAV: NavItem[] = [
   { to: '/training', label: 'Тренировка', icon: Dumbbell },
   { to: '/review', label: 'Повторение', icon: RotateCcw, badge: (d) => d || null },
+  { to: '/study', label: 'Учить', icon: GraduationCap },
+  { to: '/', label: 'Мой прогресс', icon: LayoutList },
+  { to: '/catalog', label: 'Картотека', icon: Library },
+]
+
+const OWNER_NAV: NavItem[] = [
+  { to: '/team', label: 'Команда', icon: Target },
+  { to: '/topics', label: 'Темы базы', icon: Layers },
+  { to: '/map', label: 'Смысловая карта', icon: Compass },
+  { to: '/search', label: 'Поиск по смыслу', icon: Sparkles },
 ]
 
 function DueBadge({ value, dark }: { value: number; dark?: boolean }) {
@@ -54,6 +60,7 @@ function DueBadge({ value, dark }: { value: number; dark?: boolean }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth()
+  const [mobileMenu, setMobileMenu] = useState(false)
   const { data: overview } = useQuery({
     queryKey: ['overview'],
     queryFn: api.overview,
@@ -66,6 +73,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   })
   const location = useLocation()
   const due = overview?.due_count ?? 0
+  const ownerNav = OWNER_NAV.filter((item) => {
+    if (item.to === '/map') return meta?.features.semantic_map
+    if (item.to === '/search') return meta?.features.semantic_search
+    return true
+  })
 
   // Тренировка — режим фокуса: скрываем всю навигацию.
   const focusMode = /^\/training\/[^/]+$/.test(location.pathname)
@@ -90,7 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <nav className="flex-1 px-2 py-3" aria-label="Основная навигация">
           <ul className="space-y-0.5">
-            {NAV.map(({ to, label, icon: Icon, badge }) => {
+            {PRIMARY_NAV.map(({ to, label, icon: Icon, badge }) => {
               const count = badge?.(due) ?? null
               return (
                 <li key={to}>
@@ -115,6 +127,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )
             })}
           </ul>
+          {user.role === 'owner' && (
+            <>
+              <div className="mx-3 mt-5 mb-2 text-[10px] font-medium tracking-[0.12em] text-ink-muted/80 uppercase">
+                Управление
+              </div>
+              <ul className="space-y-0.5">
+                {ownerNav.map(({ to, label, icon: Icon }) => (
+                  <li key={to}>
+                    <NavLink
+                      to={to}
+                      className={({ isActive }) =>
+                        cn(
+                          'group flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] transition-colors',
+                          isActive
+                            ? 'bg-ink-soft font-medium text-paper shadow-[inset_2px_0_0_0_var(--amber)]'
+                            : 'text-ink-muted hover:bg-ink-soft/60 hover:text-paper',
+                        )
+                      }
+                    >
+                      <Icon className="size-4 shrink-0" strokeWidth={1.75} aria-hidden />
+                      {label}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </nav>
 
         {/* Состояние базы — постоянный контекст, а не украшение. */}
@@ -159,6 +198,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <span className="font-serif text-sm font-semibold text-paper">Картотека</span>
         <span className="text-2xs tracking-wide text-ink-muted uppercase">ЧГК</span>
         <span className="ml-auto text-2xs text-ink-muted">{user.display_name}</span>
+        {user.role === 'owner' && (
+          <button
+            type="button"
+            onClick={() => setMobileMenu((value) => !value)}
+            className="flex size-9 items-center justify-center rounded-md text-ink-muted hover:bg-ink-soft hover:text-paper"
+            aria-expanded={mobileMenu}
+            aria-label={mobileMenu ? 'Закрыть меню управления' : 'Открыть меню управления'}
+          >
+            {mobileMenu ? <X className="size-4" /> : <Menu className="size-4" />}
+          </button>
+        )}
         <button
           onClick={() => void logout()}
           className="text-ink-muted"
@@ -168,15 +218,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </button>
       </header>
 
+      {mobileMenu && user.role === 'owner' && (
+        <div className="fixed inset-x-0 top-[49px] z-30 border-b border-ink-line bg-ink px-3 py-3 shadow-lg lg:hidden">
+          <div className="mb-2 px-2 text-[10px] font-medium tracking-[0.12em] text-ink-muted uppercase">
+            Управление
+          </div>
+          <div className="grid grid-cols-2 gap-1">
+            {ownerNav.map(({ to, label, icon: Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                onClick={() => setMobileMenu(false)}
+                className={({ isActive }) =>
+                  cn(
+                    'flex min-h-11 items-center gap-2 rounded-md px-3 text-xs',
+                    isActive ? 'bg-ink-soft text-paper' : 'text-ink-muted',
+                  )
+                }
+              >
+                <Icon className="size-4" aria-hidden />
+                {label}
+              </NavLink>
+            ))}
+          </div>
+        </div>
+      )}
+
       <main className="min-w-0 flex-1 pb-16 lg:pb-0">{children}</main>
 
       {/* ─── Мобильная навигация ────────────────────────────────── */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-9 border-t border-ink-line
+        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-ink-line
                    bg-ink lg:hidden"
         aria-label="Основная навигация"
       >
-        {NAV.map(({ to, label, icon: Icon, badge }) => {
+        {PRIMARY_NAV.map(({ to, label, icon: Icon, badge }) => {
           const count = badge?.(due) ?? null
           return (
             <NavLink
@@ -185,7 +261,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               end={to === '/'}
               className={({ isActive }) =>
                 cn(
-                  'relative flex flex-col items-center gap-1 py-2 text-[10px] transition-colors',
+                  'relative flex min-h-14 flex-col items-center justify-center gap-1 px-1 py-1.5 text-[10px] transition-colors',
                   isActive ? 'text-amber-soft' : 'text-ink-muted',
                 )
               }

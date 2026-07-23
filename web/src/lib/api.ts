@@ -14,6 +14,10 @@ export interface Meta {
   classified: number
   classification_pct: number
   with_difficulty: number
+  features: {
+    semantic_map: boolean
+    semantic_search: boolean
+  }
 }
 
 export interface CatalogItem {
@@ -343,6 +347,20 @@ export interface TeamDossier {
     deficit: number
     per_question: number
   }[]
+  players?: PlayerActivity[]
+}
+
+export interface PlayerActivity {
+  id: number
+  username: string
+  display_name: string
+  role: 'owner' | 'player'
+  attempts: number
+  questions: number
+  correct: number
+  success_pct: number | null
+  last_attempt_at: string | null
+  attempts_7d: number
 }
 
 export interface ForecastSwing {

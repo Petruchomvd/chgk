@@ -70,6 +70,7 @@ def test_login_cookie_and_csrf_protect_api(tmp_path, monkeypatch):
     monkeypatch.setenv("CHGK_COOKIE_SECURE", "0")
 
     digest, salt = auth.hash_password("correct horse battery")
+    player_digest, player_salt = auth.hash_password("player password 123")
     now = datetime.now().isoformat(timespec="seconds")
     conn = connection()
     try:
@@ -81,6 +82,24 @@ def test_login_cookie_and_csrf_protect_api(tmp_path, monkeypatch):
             ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
             """,
             (42, "matvey", "Матвей", digest, salt, "owner", now, now),
+        )
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, display_name, password_hash, password_salt,
+                role, active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+            """,
+            (
+                43,
+                "player",
+                "Игрок",
+                player_digest,
+                player_salt,
+                "player",
+                now,
+                now,
+            ),
         )
         conn.commit()
     finally:
@@ -111,3 +130,18 @@ def test_login_cookie_and_csrf_protect_api(tmp_path, monkeypatch):
             == 200
         )
         assert client.get("/api/auth/session").status_code == 401
+
+        player_login = client.post(
+            "/api/auth/login",
+            json={
+                "username": "player",
+                "password": "player password 123",
+                "remember": False,
+            },
+        )
+        assert player_login.status_code == 200
+        assert player_login.json()["user"]["role"] == "player"
+        assert client.get("/api/team/dossier").status_code == 403
+        assert client.get("/api/team/forecast?pack=1").status_code == 403
+        assert client.get("/api/semantic/map").status_code == 403
+        assert client.get("/api/search/semantic?q=наполеон").status_code == 403

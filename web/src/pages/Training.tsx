@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Search } from 'lucide-react'
+import { ChevronDown, Search, SlidersHorizontal } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Page, PageHeader } from '@/components/AppShell'
 import { ErrorState } from '@/components/States'
@@ -21,6 +21,13 @@ const MODES: { value: Mode; label: string; hint: string }[] = [
   { value: 'category', label: 'По темам', hint: 'Только размеченная часть базы' },
   { value: 'tournament', label: 'Турнир', hint: 'Вопросы одного пакета подряд' },
 ]
+
+const QUICK_MODES = (['random', 'followup', 'weak'] as Mode[]).map(
+  (value) => MODES.find((mode) => mode.value === value)!,
+)
+const EXTRA_MODES = MODES.filter((mode) =>
+  ['category', 'tournament'].includes(mode.value),
+)
 
 const COUNTS = [6, 12, 24, 36]
 
@@ -58,6 +65,7 @@ export function Training() {
   const [tournamentSearch, setTournamentSearch] = useState('')
   const [layer, setLayer] = useState<string>('any')
   const [tech, setTech] = useState<string>('any')
+  const [advanced, setAdvanced] = useState(false)
 
   const activeLayer = LAYERS.find((l) => l.value === layer) ?? LAYERS[0]
 
@@ -107,19 +115,23 @@ export function Training() {
 
   return (
     <Page>
-      <PageHeader title="Тренировка" />
+      <PageHeader title="Тренировка" meta="Выберите цель и начинайте" />
 
-      {/* ─── Режим ─────────────────────────────────────────────── */}
+      {/* Три частых сценария остаются на первом экране. Редкие фильтры
+          раскрываются отдельно и не мешают быстро начать тренировку. */}
       <fieldset>
         <legend className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Что тренируем
+          Цель тренировки
         </legend>
         <div className="grid gap-2 sm:grid-cols-3">
-          {MODES.map((m) => (
+          {QUICK_MODES.map((m) => (
             <button
               key={m.value}
               type="button"
-              onClick={() => setMode(m.value)}
+              onClick={() => {
+                setMode(m.value)
+                setAdvanced(false)
+              }}
               aria-pressed={mode === m.value}
               className={cn(
                 'rounded-lg border px-3.5 py-3 text-left transition-colors',
@@ -135,8 +147,49 @@ export function Training() {
         </div>
       </fieldset>
 
+      <button
+        type="button"
+        onClick={() => setAdvanced((value) => !value)}
+        aria-expanded={advanced}
+        className="mt-4 flex min-h-10 items-center gap-2 rounded-md text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <SlidersHorizontal className="size-3.5" aria-hidden />
+        Настроить тренировку
+        <ChevronDown
+          className={cn('size-3.5 transition-transform', advanced && 'rotate-180')}
+          aria-hidden
+        />
+      </button>
+
+      {advanced && (
+        <fieldset className="mt-2 rounded-lg border border-border bg-paper-raised p-3.5">
+          <legend className="px-1 text-2xs font-medium tracking-wide text-muted-foreground uppercase">
+            Другой формат
+          </legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {EXTRA_MODES.map((m) => (
+              <button
+                key={m.value}
+                type="button"
+                onClick={() => setMode(m.value)}
+                aria-pressed={mode === m.value}
+                className={cn(
+                  'rounded-lg border px-3.5 py-3 text-left transition-colors',
+                  mode === m.value
+                    ? 'border-amber bg-amber-wash/50'
+                    : 'border-border bg-paper hover:border-amber-soft',
+                )}
+              >
+                <div className="text-[13px] font-medium">{m.label}</div>
+                <div className="mt-0.5 text-2xs leading-snug text-muted-foreground">{m.hint}</div>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
       {/* ─── Слабые темы ───────────────────────────────────────── */}
-      {mode === 'weak' && (
+      {advanced && mode === 'weak' && (
         <fieldset className="mt-6">
           <legend className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
             По каким темам
@@ -183,7 +236,7 @@ export function Training() {
       )}
 
       {/* ─── Темы ──────────────────────────────────────────────── */}
-      {mode === 'category' && (
+      {advanced && mode === 'category' && (
         <fieldset className="mt-6">
           <legend className="mb-2 flex w-full items-baseline justify-between text-xs font-medium tracking-wide text-muted-foreground uppercase">
             <span>Темы</span>
@@ -223,7 +276,7 @@ export function Training() {
       )}
 
       {/* ─── Турнир ────────────────────────────────────────────── */}
-      {mode === 'tournament' && (
+      {advanced && mode === 'tournament' && (
         <fieldset className="mt-6">
           <legend className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Турнир
@@ -269,7 +322,7 @@ export function Training() {
       )}
 
       {/* ─── Беручесть ─────────────────────────────────────────── */}
-      {layerApplies && (
+      {advanced && layerApplies && (
         <fieldset className="mt-6">
           <legend className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Насколько трудные
@@ -325,7 +378,7 @@ export function Training() {
           ))}
         </div>
 
-        {layerApplies && (
+        {advanced && layerApplies && (
           <>
             <h2 className="mt-5 mb-2 text-2xs font-medium tracking-wide text-muted-foreground uppercase">
               Приём вопроса
@@ -357,11 +410,11 @@ export function Training() {
         </div>
       )}
 
-      <div className="mt-7 flex items-center gap-3 border-t border-border pt-5">
+      <div className="mt-7 flex flex-wrap items-center gap-3 border-t border-border pt-5">
         <Button
           onClick={() => start.mutate()}
           disabled={!canStart || start.isPending}
-          className="h-9"
+          className="h-10 min-w-28"
         >
           {start.isPending ? 'Загружаем…' : 'Начать'}
         </Button>

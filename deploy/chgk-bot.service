@@ -1,0 +1,23 @@
+[Unit]
+Description=CHGK Telegram training bot
+After=network-online.target chgk-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=chgk
+Group=chgk
+WorkingDirectory=/opt/chgk/current
+EnvironmentFile=/etc/chgk/chgk.env
+ExecStart=/opt/chgk/venv/bin/python -m bot.main
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/chgk /opt/chgk/current/studies
+
+[Install]
+WantedBy=multi-user.target

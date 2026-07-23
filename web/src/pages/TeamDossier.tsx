@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { Target, TrendingDown, Trophy, Crosshair, Users } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Target, TrendingDown, Trophy, Crosshair, Users, UserPlus } from 'lucide-react'
 import { api, type CalibrationBand } from '@/lib/api'
 import { Page } from '@/components/AppShell'
 import { ErrorState, BlockSkeleton, loadError } from '@/components/States'
@@ -199,6 +199,14 @@ function Forecast() {
 
 export function TeamDossier() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [showCreatePlayer, setShowCreatePlayer] = useState(false)
+  const [playerForm, setPlayerForm] = useState({
+    display_name: '',
+    username: '',
+    password: '',
+    telegram_id: '',
+  })
   const { data, isPending, error, fetchStatus, refetch } = useQuery({
     queryKey: ['team-dossier'],
     queryFn: api.teamDossier,
@@ -207,6 +215,23 @@ export function TeamDossier() {
   const startGap = useMutation({
     mutationFn: () => api.startTraining({ mode: 'team_gap', count: 12 }),
     onSuccess: (s) => navigate(`/training/${s.session_id}`),
+  })
+
+  const createPlayer = useMutation({
+    mutationFn: () =>
+      api.createPlayer({
+        display_name: playerForm.display_name.trim(),
+        username: playerForm.username.trim(),
+        password: playerForm.password,
+        telegram_id: playerForm.telegram_id.trim()
+          ? Number(playerForm.telegram_id)
+          : null,
+      }),
+    onSuccess: () => {
+      setPlayerForm({ display_name: '', username: '', password: '', telegram_id: '' })
+      setShowCreatePlayer(false)
+      queryClient.invalidateQueries({ queryKey: ['team-dossier'] })
+    },
   })
 
   const err = loadError(error, fetchStatus)
@@ -234,13 +259,110 @@ export function TeamDossier() {
       </p>
 
       <section className="mb-7">
-        <div className="mb-2 flex items-center gap-1.5">
-          <Users className="size-4 text-amber-ink" aria-hidden />
-          <h2 className="text-sm font-semibold">Тренировки игроков</h2>
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <Users className="size-4 text-amber-ink" aria-hidden />
+            <h2 className="text-sm font-semibold">Тренировки игроков</h2>
+          </div>
+          <Button
+            variant="outline"
+            className="ml-auto h-8 text-2xs"
+            onClick={() => {
+              createPlayer.reset()
+              setShowCreatePlayer((shown) => !shown)
+            }}
+          >
+            <UserPlus className="size-3.5" aria-hidden />
+            Новый аккаунт
+          </Button>
         </div>
         <p className="mb-3 text-2xs text-muted-foreground">
           Активность на сайте и в подключённых ботах хранится в общей истории игрока.
         </p>
+        {showCreatePlayer && (
+          <form
+            className="mb-4 rounded-lg border border-border bg-paper-raised p-3.5"
+            onSubmit={(event) => {
+              event.preventDefault()
+              createPlayer.mutate()
+            }}
+          >
+            <div className="mb-3">
+              <h3 className="text-xs font-semibold">Создать аккаунт игрока</h3>
+              <p className="mt-0.5 text-2xs text-muted-foreground">
+                Имя и логин можно сообщить игроку. Пароль хранится в защищённом виде.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1 text-2xs font-medium">
+                <span>Имя игрока</span>
+                <Input
+                  value={playerForm.display_name}
+                  onChange={(event) =>
+                    setPlayerForm((form) => ({ ...form, display_name: event.target.value }))
+                  }
+                  placeholder="Например, Анна"
+                  required
+                />
+              </label>
+              <label className="space-y-1 text-2xs font-medium">
+                <span>Логин</span>
+                <Input
+                  value={playerForm.username}
+                  onChange={(event) =>
+                    setPlayerForm((form) => ({ ...form, username: event.target.value }))
+                  }
+                  placeholder="anna"
+                  autoCapitalize="none"
+                  required
+                />
+              </label>
+              <label className="space-y-1 text-2xs font-medium">
+                <span>Временный пароль</span>
+                <Input
+                  type="password"
+                  value={playerForm.password}
+                  onChange={(event) =>
+                    setPlayerForm((form) => ({ ...form, password: event.target.value }))
+                  }
+                  placeholder="Не короче 10 символов"
+                  minLength={10}
+                  required
+                />
+              </label>
+              <label className="space-y-1 text-2xs font-medium">
+                <span>Telegram ID <span className="font-normal text-muted-foreground">необязательно</span></span>
+                <Input
+                  type="number"
+                  min={1}
+                  value={playerForm.telegram_id}
+                  onChange={(event) =>
+                    setPlayerForm((form) => ({ ...form, telegram_id: event.target.value }))
+                  }
+                  placeholder="Для общей истории с ботом"
+                />
+              </label>
+            </div>
+            {createPlayer.error && (
+              <p className="mt-3 text-2xs text-rose-600">
+                {(createPlayer.error as Error).message}
+              </p>
+            )}
+            <div className="mt-3 flex gap-2">
+              <Button type="submit" className="h-8 text-2xs" disabled={createPlayer.isPending}>
+                {createPlayer.isPending ? 'Создаём…' : 'Создать аккаунт'}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 text-2xs"
+                onClick={() => setShowCreatePlayer(false)}
+              >
+                Отмена
+              </Button>
+            </div>
+          </form>
+        )}
         <div className="overflow-hidden rounded-lg border border-border bg-paper-raised">
           <div className="hidden grid-cols-[minmax(140px,1fr)_100px_90px_90px_100px] gap-3 border-b border-border px-3.5 py-2 text-2xs font-medium tracking-wide text-muted-foreground uppercase sm:grid">
             <span>Игрок</span>

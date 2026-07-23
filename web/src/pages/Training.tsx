@@ -12,17 +12,18 @@ import { Label } from '@/components/ui/label'
 import { num, questionsWord } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-type Mode = 'random' | 'weak' | 'category' | 'tournament' | 'followup'
+type Mode = 'random' | 'marked' | 'weak' | 'category' | 'tournament' | 'followup'
 
 const MODES: { value: Mode; label: string; hint: string }[] = [
+  { value: 'random', label: 'Случайные', hint: 'Из всей базы вопросов' },
+  { value: 'marked', label: 'Только размеченные', hint: 'Вопросы с определённой темой' },
   { value: 'weak', label: 'Слабые темы', hint: 'Новые вопросы по измеренным провалам' },
-  { value: 'followup', label: 'Работа над ошибками', hint: 'Похожие вопросы на недавние провалы' },
-  { value: 'random', label: 'Случайные', hint: 'Из всей базы — 212 тысяч вопросов' },
-  { value: 'category', label: 'По темам', hint: 'Только размеченная часть базы' },
+  { value: 'followup', label: 'Работа над ошибками', hint: 'Другие вопросы с теми же ответами' },
+  { value: 'category', label: 'Выбрать темы', hint: 'Одна или несколько конкретных тем' },
   { value: 'tournament', label: 'Турнир', hint: 'Вопросы одного пакета подряд' },
 ]
 
-const QUICK_MODES = (['random', 'followup', 'weak'] as Mode[]).map(
+const QUICK_MODES = (['random', 'marked', 'followup', 'weak'] as Mode[]).map(
   (value) => MODES.find((mode) => mode.value === value)!,
 )
 const EXTRA_MODES = MODES.filter((mode) =>
@@ -63,6 +64,7 @@ export function Training() {
   const [categoryIds, setCategoryIds] = useState<number[]>([])
   const [packId, setPackId] = useState<number | null>(null)
   const [tournamentSearch, setTournamentSearch] = useState('')
+  const [tournamentYear, setTournamentYear] = useState<number | null>(null)
   const [layer, setLayer] = useState<string>('any')
   const [tech, setTech] = useState<string>('any')
   const [advanced, setAdvanced] = useState(false)
@@ -76,8 +78,9 @@ export function Training() {
     staleTime: Infinity,
   })
   const { data: tournaments } = useQuery({
-    queryKey: ['tournaments', tournamentSearch],
-    queryFn: () => api.tournaments(tournamentSearch),
+    queryKey: ['tournaments', tournamentSearch, tournamentYear],
+    queryFn: () =>
+      api.tournaments(tournamentSearch, tournamentYear, tournamentYear ? 500 : 80),
     enabled: mode === 'tournament',
   })
 
@@ -111,27 +114,35 @@ export function Training() {
     (mode === 'tournament' && packId !== null) ||
     (mode === 'weak' && weakIds.length > 0) ||
     mode === 'random' ||
+    mode === 'marked' ||
     mode === 'followup'
+
+  const selectMode = (value: Mode, collapse = false) => {
+    setMode(value)
+    if (collapse) {
+      setAdvanced(false)
+      setLayer('any')
+      setTech('any')
+    }
+    start.reset()
+  }
 
   return (
     <Page>
       <PageHeader title="Тренировка" meta="Выберите цель и начинайте" />
 
-      {/* Три частых сценария остаются на первом экране. Редкие фильтры
+      {/* Частые сценарии остаются на первом экране. Редкие фильтры
           раскрываются отдельно и не мешают быстро начать тренировку. */}
       <fieldset>
         <legend className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Цель тренировки
         </legend>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2">
           {QUICK_MODES.map((m) => (
             <button
               key={m.value}
               type="button"
-              onClick={() => {
-                setMode(m.value)
-                setAdvanced(false)
-              }}
+              onClick={() => selectMode(m.value, true)}
               aria-pressed={mode === m.value}
               className={cn(
                 'rounded-lg border px-3.5 py-3 text-left transition-colors',
@@ -171,7 +182,7 @@ export function Training() {
               <button
                 key={m.value}
                 type="button"
-                onClick={() => setMode(m.value)}
+                onClick={() => selectMode(m.value)}
                 aria-pressed={mode === m.value}
                 className={cn(
                   'rounded-lg border px-3.5 py-3 text-left transition-colors',
@@ -243,13 +254,14 @@ export function Training() {
             <button
               type="button"
               className="text-2xs normal-case hover:text-amber-ink"
-              onClick={() =>
+              onClick={() => {
                 setCategoryIds(
                   categoryIds.length === meta?.categories.length
                     ? []
                     : (meta?.categories.map((c) => c.id) ?? []),
                 )
-              }
+                start.reset()
+              }}
             >
               {categoryIds.length === meta?.categories.length ? 'снять все' : 'выбрать все'}
             </button>
@@ -260,11 +272,12 @@ export function Training() {
                 <Checkbox
                   id={`cat-${c.id}`}
                   checked={categoryIds.includes(c.id)}
-                  onCheckedChange={(v) =>
+                  onCheckedChange={(v) => {
                     setCategoryIds((prev) =>
                       v ? [...prev, c.id] : prev.filter((x) => x !== c.id),
                     )
-                  }
+                    start.reset()
+                  }}
                 />
                 <Label htmlFor={`cat-${c.id}`} className="cursor-pointer text-xs font-normal">
                   {c.name_ru}
@@ -288,11 +301,42 @@ export function Training() {
             />
             <Input
               value={tournamentSearch}
-              onChange={(e) => setTournamentSearch(e.target.value)}
+              onChange={(e) => {
+                setTournamentSearch(e.target.value)
+                setPackId(null)
+                start.reset()
+              }}
               placeholder="Название турнира…"
               aria-label="Поиск турнира"
               className="h-9 pl-9"
             />
+          </div>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <label htmlFor="tournament-year" className="text-2xs text-muted-foreground">
+              Год
+            </label>
+            <select
+              id="tournament-year"
+              value={tournamentYear ?? ''}
+              onChange={(event) => {
+                setTournamentYear(event.target.value ? Number(event.target.value) : null)
+                setPackId(null)
+                start.reset()
+              }}
+              className="h-8 rounded-md border border-border bg-paper-raised px-2 text-xs"
+            >
+              <option value="">Последние турниры</option>
+              {(tournaments?.years ?? []).map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+            <span className="text-2xs text-muted-foreground">
+              {tournaments
+                ? `${num(tournaments.total)} турниров в списке`
+                : 'Загружаем список…'}
+            </span>
           </div>
           <ul className="max-h-64 divide-y divide-border overflow-y-auto rounded-lg border border-border bg-paper-raised">
             {tournaments?.items.length === 0 ? (
@@ -302,14 +346,24 @@ export function Training() {
                 <li key={t.id}>
                   <button
                     type="button"
-                    onClick={() => setPackId(t.id)}
+                    onClick={() => {
+                      setPackId(t.id)
+                      start.reset()
+                    }}
                     aria-pressed={packId === t.id}
                     className={cn(
                       'flex w-full items-center gap-3 px-3.5 py-2 text-left transition-colors',
                       packId === t.id ? 'bg-amber-wash/60' : 'hover:bg-amber-wash/30',
                     )}
                   >
-                    <span className="min-w-0 flex-1 truncate text-xs">{t.title}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs">
+                      {t.title}
+                      {t.year && (
+                        <span className="ml-1.5 text-2xs text-muted-foreground">
+                          {t.year}
+                        </span>
+                      )}
+                    </span>
                     <span className="tabular shrink-0 text-2xs text-muted-foreground">
                       {t.questions_count} {questionsWord(t.questions_count)}
                     </span>
@@ -332,7 +386,10 @@ export function Training() {
               <button
                 key={l.value}
                 type="button"
-                onClick={() => setLayer(l.value)}
+              onClick={() => {
+                setLayer(l.value)
+                start.reset()
+              }}
                 aria-pressed={layer === l.value}
                 className={cn(
                   'rounded-md border px-3 py-1.5 text-left transition-colors',
@@ -364,7 +421,10 @@ export function Training() {
             <button
               key={c}
               type="button"
-              onClick={() => setCount(c)}
+              onClick={() => {
+                setCount(c)
+                start.reset()
+              }}
               aria-pressed={count === c}
               className={cn(
                 'tabular h-8 w-14 rounded-md border text-xs transition-colors',
@@ -388,7 +448,10 @@ export function Training() {
                 <button
                   key={t.value}
                   aria-pressed={tech === t.value}
-                  onClick={() => setTech(t.value)}
+                  onClick={() => {
+                    setTech(t.value)
+                    start.reset()
+                  }}
                   className={cn(
                     'rounded-md border px-2.5 py-1.5 text-xs',
                     tech === t.value
@@ -433,6 +496,12 @@ export function Training() {
         <p className="mt-4 text-2xs leading-relaxed text-muted-foreground">
           По темам доступно {num(meta.classified)} {questionsWord(meta.classified)} —{' '}
           {meta.classification_pct}% базы. Режим «Случайные» берёт вопросы из всей базы.
+        </p>
+      )}
+      {meta && mode === 'marked' && (
+        <p className="mt-4 text-2xs leading-relaxed text-muted-foreground">
+          В выборке участвуют {num(meta.classified)} {questionsWord(meta.classified)} с
+          определённой темой — {meta.classification_pct}% всей базы.
         </p>
       )}
     </Page>

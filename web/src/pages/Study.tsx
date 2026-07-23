@@ -33,30 +33,34 @@ export function Study() {
   const toggleLearned = (key: string) => {
     setLearned((prev) => {
       const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       localStorage.setItem(LEARNED_KEY, JSON.stringify([...next]))
       return next
     })
   }
 
   const { data: meta } = useQuery({ queryKey: ['meta'], queryFn: api.meta })
-  const { data: dossier } = useQuery({ queryKey: ['team-dossier'], queryFn: api.teamDossier })
+  const { data: weakTopics } = useQuery({
+    queryKey: ['weak-topics'],
+    queryFn: api.weakTopics,
+  })
 
   // Слабые темы команды (n>=5, дефицит) — их учить в первую очередь.
   const weakNames = useMemo(() => {
     const set = new Set<string>()
-    for (const c of dossier?.categories ?? []) {
-      if (c.per_question < 0 && c.questions >= 5) set.add(c.category)
+    for (const c of weakTopics?.categories ?? []) {
+      if (c.weak) set.add(c.category)
     }
     return set
-  }, [dossier])
+  }, [weakTopics])
 
-  const categories = meta?.categories ?? []
   const weakFirst = useMemo(() => {
+    const categories = meta?.categories ?? []
     const weak = categories.filter((c) => weakNames.has(c.name_ru))
     const rest = categories.filter((c) => !weakNames.has(c.name_ru))
     return [...weak, ...rest]
-  }, [categories, weakNames])
+  }, [meta?.categories, weakNames])
 
   // По умолчанию — самая слабая тема.
   useEffect(() => {
@@ -92,6 +96,12 @@ export function Study() {
         Ниже — что учить по темам (слабые темы команды отмечены&nbsp;<span className="text-amber-ink">●</span>),
         а по каждому ответу — все углы вопроса с готовым разбором.
       </p>
+      {meta && !meta.features.fact_cards && (
+        <div className="mb-4 rounded-lg border border-amber/40 bg-amber-wash/40 px-3.5 py-3 text-xs">
+          Подготовленные карточки фактов пока не подключены. Примеры вопросов и
+          редакторские комментарии доступны, но краткого конспекта нет.
+        </div>
+      )}
 
       {/* Выбор темы */}
       <div className="mb-4 flex flex-wrap gap-1.5">
@@ -213,7 +223,8 @@ export function Study() {
                     ))}
                   </ul>
                   <p className="mt-2 text-2xs text-muted-foreground">
-                    Факты сверены с источниками (Wikipedia + разборы вопросов).
+                    Карточка заранее подготовлена ИИ и сверена с источниками. При
+                    открытии страницы новые запросы к модели не выполняются.
                   </p>
                 </div>
               )}

@@ -64,9 +64,10 @@ def test_training_progress_isolated_between_users(tmp_path):
     assert stats_user_1["correct_attempts"] == 0
     assert stats_user_2["total_attempts"] == 1
     assert stats_user_2["correct_attempts"] == 1
+    # В очередь попадают только ошибки; правильный с первого раза вопрос ЧГК
+    # незачем заучивать дословно.
     assert [(row["user_id"], row["question_id"], row["box"]) for row in leitner_rows] == [
         (1, 77, 1),
-        (2, 77, 2),
     ]
 
 
@@ -114,6 +115,8 @@ def test_legacy_training_db_is_migrated_to_owner(tmp_path, monkeypatch):
         conn.close()
 
     assert stats["total_attempts"] == 1
-    assert due == 1
-    assert due_ids == [5]
+    # Старая запись Leitner сохраняется при миграции, но правильный без единой
+    # ошибки вопрос больше не показывается в очереди.
+    assert due == 0
+    assert due_ids == []
     assert [row["name"] for row in pk_info if row["pk"]] == ["user_id", "question_id"]

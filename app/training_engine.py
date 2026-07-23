@@ -24,8 +24,8 @@ from database.training_db import (
 )
 
 Mode = Literal[
-    "random", "category", "tournament", "review", "weak", "team_gap", "followup",
-    "study_fact",
+    "random", "marked", "category", "tournament", "review", "weak", "team_gap",
+    "followup", "study_fact",
 ]
 
 # ── Близнецы вопросов ────────────────────────────────────────────────
@@ -104,6 +104,32 @@ def start_random(
         mode="random",
         questions=questions,
         filters_repr=f"случайные · {len(questions)} вопросов{tech_str}",
+    )
+
+
+def start_marked(
+    chgk_conn: sqlite3.Connection,
+    count: int = 12,
+    seed: Optional[int] = None,
+    difficulty_range: Optional[tuple] = None,
+    technique: Optional[str] = None,
+) -> TrainingSession:
+    """Случайные вопросы только из классифицированной части базы."""
+    questions = get_training_questions_by_category(
+        chgk_conn,
+        category_ids=None,
+        subcategory_ids=None,
+        model_name=None,
+        difficulty_range=difficulty_range,
+        limit=count,
+        seed=seed,
+        technique=technique,
+    )
+    tech_str = f" · приём: {technique}" if technique else ""
+    return TrainingSession(
+        mode="marked",
+        questions=questions,
+        filters_repr=f"размеченные · {len(questions)} вопросов{tech_str}",
     )
 
 
@@ -294,17 +320,12 @@ def start_followup(
     """Работа над ошибками: НОВЫЕ вопросы про факты недавних провалов.
 
     Повтор того же вопроса тренирует память о вопросе (это режим review).
-    Здесь для каждого свежего провала берутся 1-2 семантических соседа из
-    полосы 0.80-0.95: тот же факт или тема, но другой вопрос. Выше 0.95 —
-    почти дубль (бессмысленно), ниже 0.80 — уже другая тема.
+    Сначала ищем другие вопросы с тем же нормализованным ответом — это работает
+    без модели и проверяет перенос знания на новую формулировку. Если на машине
+    есть эмбеддинги, дополняем выдачу семантическими соседями.
     """
+    from app import study
     from app import semantic
-
-    if not semantic.available():
-        return TrainingSession(
-            mode="followup", questions=[],
-            filters_repr="нет векторов (scripts/build_embeddings.py)",
-        )
 
     failed = get_recent_failed_ids(training_conn, user_id, limit=30)
     if not failed:
@@ -315,27 +336,49 @@ def start_followup(
     seen = expand_with_twins(get_seen_question_ids(training_conn, user_id))
     picked: List[int] = []
     picked_set: set = set()
+
+    # Главный путь для небольшого VPS: другой вопрос с тем же ответом.
     for qid in failed:
         if len(picked) >= count:
             break
-        taken = 0
-        for nid, sim in semantic.similar_ids(qid, top=15):
-            if taken >= per_fail or len(picked) >= count:
+        row = chgk_conn.execute(
+            "SELECT answer FROM questions WHERE id = ?", (qid,)
+        ).fetchone()
+        if not row or not row["answer"]:
+            continue
+        for candidate in study.question_ids_for_answer(
+            chgk_conn, row["answer"], limit=20
+        ):
+            if candidate == qid or candidate in seen or candidate in picked_set:
+                continue
+            picked.append(candidate)
+            picked_set.add(candidate)
+            break
+
+    # Эмбеддинги дают запасной путь для фактов, у которых нет точного совпадения
+    # ответа в корпусе. На сервере этот блок просто пропускается.
+    if semantic.available():
+        for qid in failed:
+            if len(picked) >= count:
                 break
-            if not (band[0] <= sim < band[1]):
-                continue
-            if nid in seen or nid in picked_set:
-                continue
-            picked.append(nid)
-            picked_set.add(nid)
-            taken += 1
+            taken = 0
+            for nid, sim in semantic.similar_ids(qid, top=15):
+                if taken >= per_fail or len(picked) >= count:
+                    break
+                if not (band[0] <= sim < band[1]):
+                    continue
+                if nid in seen or nid in picked_set:
+                    continue
+                picked.append(nid)
+                picked_set.add(nid)
+                taken += 1
 
     questions = _fetch_full_questions(chgk_conn, picked) if picked else []
     return TrainingSession(
         mode="followup",
         questions=questions,
-        filters_repr=f"работа над ошибками · {len(questions)} вопросов "
-                     f"по {min(len(failed), 30)} провалам",
+        filters_repr=f"другие вопросы по ошибкам · {len(questions)} вопросов "
+        f"по {min(len(failed), 30)} провалам",
     )
 
 
@@ -407,12 +450,14 @@ def get_pack_tours(chgk_conn: sqlite3.Connection, pack_id: int) -> List[Dict]:
 def get_recent_tournaments(chgk_conn: sqlite3.Connection, limit: int = 12) -> List[Dict]:
     rows = chgk_conn.execute(
         """
-        SELECT p.id, p.title, p.difficulty, COUNT(q.id) AS questions_count
+        SELECT p.id, p.title, p.difficulty, COUNT(q.id) AS questions_count,
+               COALESCE(substr(p.start_date, 1, 4),
+                        substr(p.published_date, 1, 4)) AS year
         FROM packs p
         JOIN questions q ON q.pack_id = p.id
         GROUP BY p.id
         HAVING COUNT(q.id) > 0
-        ORDER BY p.id DESC
+        ORDER BY COALESCE(p.start_date, p.published_date) DESC, p.id DESC
         LIMIT ?
         """,
         (limit,),
@@ -420,14 +465,20 @@ def get_recent_tournaments(chgk_conn: sqlite3.Connection, limit: int = 12) -> Li
     return [dict(r) for r in rows]
 
 
-def search_tournaments(chgk_conn: sqlite3.Connection, query: str, limit: int = 20) -> List[Dict]:
-    """Поиск турниров по названию с Unicode-friendly ранжированием."""
+def browse_tournaments(
+    chgk_conn: sqlite3.Connection,
+    query: str = "",
+    year: Optional[int] = None,
+    limit: int = 60,
+    offset: int = 0,
+) -> Dict:
+    """Каталог турниров с поиском, годами и постраничной выдачей."""
     query_norm = query.strip().casefold()
-    if not query_norm:
-        return []
-
     rows = chgk_conn.execute(
-        "SELECT p.id, p.title, p.difficulty, COUNT(q.id) AS questions_count "
+        "SELECT p.id, p.title, p.difficulty, COUNT(q.id) AS questions_count, "
+        "COALESCE(substr(p.start_date, 1, 4), "
+        "substr(p.published_date, 1, 4)) AS year, "
+        "COALESCE(p.start_date, p.published_date, '') AS sort_date "
         "FROM packs p LEFT JOIN questions q ON q.pack_id = p.id "
         "WHERE p.title IS NOT NULL "
         "GROUP BY p.id HAVING COUNT(q.id) > 0"
@@ -436,35 +487,66 @@ def search_tournaments(chgk_conn: sqlite3.Connection, query: str, limit: int = 2
     matches: List[Dict] = []
     for row in rows:
         pack = dict(row)
-        title_norm = pack["title"].casefold()
-        pos = title_norm.find(query_norm)
-        if pos == -1:
+        if year is not None and str(pack.get("year") or "") != str(year):
             continue
-
-        if title_norm == query_norm:
-            rank = 0
-        elif title_norm.startswith(query_norm):
-            rank = 1
+        title_norm = pack["title"].casefold()
+        if query_norm:
+            pos = title_norm.find(query_norm)
+            if pos == -1:
+                continue
+            if title_norm == query_norm:
+                rank = 0
+            elif title_norm.startswith(query_norm):
+                rank = 1
+            else:
+                rank = 2
         else:
-            rank = 2
+            pos = 0
+            rank = 0
 
         pack["_rank"] = rank
         pack["_pos"] = pos
         matches.append(pack)
 
-    matches.sort(
-        key=lambda p: (
-            p["_rank"],
-            p["_pos"],
-            -p["questions_count"],
-            p["title"].casefold(),
+    if query_norm:
+        matches.sort(
+            key=lambda p: (
+                p["_rank"],
+                p["_pos"],
+                -p["questions_count"],
+                p["title"].casefold(),
+            )
         )
-    )
+    else:
+        matches.sort(
+            key=lambda p: (p["sort_date"], p["id"]),
+            reverse=True,
+        )
 
-    return [
-        {k: v for k, v in pack.items() if not k.startswith("_")}
-        for pack in matches[:limit]
+    years = sorted(
+        {
+            int(row["year"])
+            for row in rows
+            if str(row["year"] or "").isdigit()
+        },
+        reverse=True,
+    )
+    items = [
+        {
+            k: v
+            for k, v in pack.items()
+            if not k.startswith("_") and k != "sort_date"
+        }
+        for pack in matches[offset : offset + limit]
     ]
+    return {"items": items, "total": len(matches), "years": years}
+
+
+def search_tournaments(
+    chgk_conn: sqlite3.Connection, query: str, limit: int = 20
+) -> List[Dict]:
+    """Совместимый короткий поиск для бота и старых вызовов."""
+    return browse_tournaments(chgk_conn, query=query, limit=limit)["items"]
 
 
 def get_pack_by_id(chgk_conn: sqlite3.Connection, pack_id: int) -> Optional[Dict]:

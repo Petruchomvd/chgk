@@ -40,6 +40,47 @@ function Section({
   )
 }
 
+function TopicRows({
+  items,
+  tone,
+}: {
+  items: OverviewData['strong_categories']
+  tone: 'strong' | 'weak'
+}) {
+  return (
+    <ul className="divide-y divide-border">
+      {items.map((item) => (
+        <li key={item.category}>
+          <Link
+            to={`/catalog?category=${encodeURIComponent(item.category)}`}
+            className="flex items-center gap-3 py-2 transition-colors hover:bg-amber-wash/40"
+          >
+            <span className="min-w-0 flex-1 truncate text-[13px]">{item.category}</span>
+            <span className="hidden h-1.5 w-28 overflow-hidden rounded-sm bg-paper-sunk sm:block">
+              <span
+                className={cn(
+                  'block h-full',
+                  tone === 'strong' ? 'bg-knew' : 'bg-missed',
+                )}
+                style={{ width: `${Math.max(2, item.success_pct)}%` }}
+              />
+            </span>
+            <span className="tabular w-9 text-right text-xs font-medium">
+              {item.success_pct}%
+            </span>
+            <span className="tabular w-[86px] shrink-0 text-right text-2xs whitespace-nowrap text-muted-foreground">
+              {item.attempts_count}{' '}
+              {plural(item.attempts_count, 'попытка', 'попытки', 'попыток')}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+type OverviewData = Awaited<ReturnType<typeof api.overview>>
+
 export function Overview() {
   const navigate = useNavigate()
   const { data, isPending, error, fetchStatus, refetch } = useQuery({
@@ -67,7 +108,16 @@ export function Overview() {
     )
   }
 
-  const { stats, due_count, weak_categories, recent, active_session } = data
+  const {
+    stats,
+    progress,
+    due_count,
+    strong_categories,
+    weak_categories,
+    recent,
+    activity,
+    active_session,
+  } = data
   const pct = stats.total_attempts
     ? Math.round((100 * stats.correct_attempts) / stats.total_attempts)
     : null
@@ -107,7 +157,7 @@ export function Overview() {
               {verbAgrees(due_count, 'ждёт', 'ждут')} повторения
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Интервальное повторение: чем раньше, тем прочнее запоминается.
+              Здесь только вопросы, в которых была ошибка. Интервалы помогают закрепить ответ.
             </p>
           </div>
           <Button onClick={() => navigate('/review')}>
@@ -123,7 +173,7 @@ export function Overview() {
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {untouched
-                ? 'Результаты сохраняются: пройденные вопросы вернутся на повторение.'
+                ? 'Результаты сохраняются; ошибки можно будет отдельно закрепить.'
                 : 'Можно взять новые вопросы или потренироваться по теме.'}
             </p>
           </div>
@@ -136,13 +186,66 @@ export function Overview() {
 
       {/* ─── Статистика ────────────────────────────────────────── */}
       {!untouched && (
-        <div className="mt-6 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
-          <Stat value={num(stats.total_attempts)} label="попыток всего" />
-          <Stat value={pct === null ? '—' : `${pct}%`} label="верных ответов" />
-          <Stat value={num(stats.distinct_questions)} label="разных вопросов" />
-          <Stat value={num(due_count)} label="к повторению" />
-        </div>
+        <>
+          <div className="mt-6 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
+            <Stat value={num(stats.total_attempts)} label="попыток всего" />
+            <Stat value={pct === null ? '—' : `${pct}%`} label="верных ответов" />
+            <Stat value={num(stats.distinct_questions)} label="разных вопросов" />
+            <Stat value={num(due_count)} label="ошибок к закреплению" />
+          </div>
+          <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-5 border-t border-border pt-5 sm:grid-cols-4">
+            <Stat
+              value={
+                progress.recent_success_pct == null
+                  ? '—'
+                  : `${progress.recent_success_pct}%`
+              }
+              label={`последние ${progress.recent_sample} ответов`}
+            />
+            <Stat value={num(progress.current_streak)} label="дней подряд" />
+            <Stat value={num(progress.active_days_30)} label="активных дней за месяц" />
+            <Stat
+              value={
+                progress.recent_avg_seconds == null
+                  ? '—'
+                  : `${Math.round(progress.recent_avg_seconds)} с`
+              }
+              label="среднее время на вопрос"
+            />
+          </div>
+        </>
       )}
+
+      {/* ─── Сильные темы ─────────────────────────────────────── */}
+      <Section
+        title="Сильные темы"
+        action={
+          strong_categories.length > 0 ? (
+            <Link
+              to="/topics"
+              className="text-2xs text-amber-ink underline-offset-2 hover:underline"
+            >
+              все темы
+            </Link>
+          ) : undefined
+        }
+      >
+        {strong_categories.length === 0 ? (
+          <Empty
+            title="Пока недостаточно данных"
+            hint="Предварительная сильная сторона появляется после двух попыток по теме."
+          />
+        ) : (
+          <>
+            <TopicRows items={strong_categories} tone="strong" />
+            {strong_categories.some((item) => item.attempts_count < 5) && (
+              <p className="mt-2 text-2xs text-muted-foreground">
+                Результаты с выборкой меньше пяти вопросов предварительные.
+              </p>
+            )}
+          </>
+        )}
+      </Section>
 
       {/* ─── Слабые темы ───────────────────────────────────────── */}
       <Section
@@ -164,36 +267,36 @@ export function Overview() {
             hint="Тема попадает сюда после трёх и более попыток — иначе процент случаен."
           />
         ) : (
-          <ul className="divide-y divide-border">
-            {weak_categories.map((w) => (
-              <li key={w.category}>
-                <Link
-                  to={`/catalog?category=${encodeURIComponent(w.category)}`}
-                  className="flex items-center gap-3 py-2 transition-colors hover:bg-amber-wash/40"
-                >
-                  <span className="min-w-0 flex-1 truncate text-[13px]">{w.category}</span>
-                  {/* Полоса = доля верных. Единственный график, который влияет на выбор. */}
-                  <span className="hidden h-1.5 w-28 overflow-hidden rounded-sm bg-paper-sunk sm:block">
-                    <span
-                      className={cn(
-                        'block h-full',
-                        w.success_pct < 50 ? 'bg-missed' : 'bg-amber',
-                      )}
-                      style={{ width: `${Math.max(2, w.success_pct)}%` }}
-                    />
-                  </span>
-                  <span className="tabular w-9 text-right text-xs font-medium">
-                    {w.success_pct}%
-                  </span>
-                  <span className="tabular w-[86px] shrink-0 text-right text-2xs whitespace-nowrap text-muted-foreground">
-                    {w.attempts_count} {plural(w.attempts_count, 'попытка', 'попытки', 'попыток')}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <TopicRows items={weak_categories} tone="weak" />
         )}
       </Section>
+
+      {/* ─── Активность ───────────────────────────────────────── */}
+      {!untouched && (
+        <Section title="Активность за 30 дней">
+          {activity.length === 0 ? (
+            <Empty title="Пока нет активности" />
+          ) : (
+            <div className="flex h-24 items-end gap-1 rounded-lg border border-border bg-paper-raised px-3 py-2">
+              {activity.map((day) => {
+                const max = Math.max(...activity.map((item) => item.total), 1)
+                return (
+                  <div
+                    key={day.day}
+                    className="group relative flex min-w-1 flex-1 items-end"
+                    title={`${day.day}: ${day.total} вопросов`}
+                  >
+                    <span
+                      className="block w-full rounded-t-sm bg-amber/70 transition-colors group-hover:bg-amber"
+                      style={{ height: `${Math.max(6, (day.total / max) * 100)}%` }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </Section>
+      )}
 
       {/* ─── Последние вопросы ─────────────────────────────────── */}
       <Section title="Недавно">

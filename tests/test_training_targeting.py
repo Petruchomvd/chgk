@@ -12,7 +12,9 @@ from app import training_engine as engine
 from dashboard.training_queries import get_training_questions_by_category
 from database.db import get_connection, insert_questions, upsert_pack
 from database.training_db import (
+    count_due,
     get_seen_question_ids,
+    get_stats,
     get_training_connection,
     record_attempt,
 )
@@ -142,3 +144,47 @@ def test_exclude_ids_is_honoured_directly(chgk):
     ids = {q["id"] for q in subset}
     assert len(ids) == 6
     assert not (ids & {101, 102, 103})
+
+
+def test_marked_mode_uses_only_classified_questions(chgk):
+    chgk.execute(
+        "INSERT INTO questions(id, pack_id, number, text, answer) VALUES (999, 1, 99, 'Без темы', 'X')"
+    )
+    chgk.commit()
+
+    session = engine.start_marked(chgk, count=50, seed=1)
+
+    assert {q["id"] for q in session.questions} == set(range(101, 110))
+    assert 999 not in {q["id"] for q in session.questions}
+
+
+def test_first_time_correct_does_not_enter_review_queue(chgk, training):
+    record_attempt(training, USER, 101, True, "О", 1.0, "random", None)
+
+    assert count_due(training, USER) == 0
+    assert get_stats(training, USER)["by_box"] == []
+
+
+def test_missed_question_enters_review_queue(chgk, training):
+    record_attempt(training, USER, 101, False, "", 1.0, "random", None)
+
+    row = training.execute(
+        "SELECT box FROM leitner WHERE user_id = ? AND question_id = ?",
+        (USER, 101),
+    ).fetchone()
+    assert row["box"] == 1
+
+
+def test_followup_uses_new_question_with_same_answer_without_vectors(
+    chgk, training, monkeypatch
+):
+    from app import semantic
+
+    chgk.execute("UPDATE questions SET answer = 'Наполеон' WHERE id IN (101, 102)")
+    chgk.commit()
+    record_attempt(training, USER, 101, False, "", 1.0, "random", None)
+    monkeypatch.setattr(semantic, "available", lambda: False)
+
+    session = engine.start_followup(chgk, training, USER, count=3)
+
+    assert [q["id"] for q in session.questions] == [102]

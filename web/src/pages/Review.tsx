@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { num, questionsWord, LEITNER_DAYS } from '@/lib/format'
 
 const BOX_LABEL: Record<number, string> = {
-  1: 'новые и забытые',
+  1: 'ошибка замечена',
   2: 'первое закрепление',
   3: 'помню неделю',
   4: 'помню две недели',
@@ -118,8 +118,8 @@ export function Review() {
             title={totalTracked === 0 ? 'Повторять пока нечего' : 'На сегодня всё повторено'}
             hint={
               totalTracked === 0
-                ? 'Пройдите тренировку — вопросы попадут в интервальное расписание и вернутся сюда.'
-                : 'Вопросы вернутся, когда подойдёт их интервал. Можно взять новые.'
+                ? 'Сюда попадут только вопросы, в которых была ошибка.'
+                : 'Ошибочные вопросы вернутся, когда подойдёт их интервал. Можно взять новые.'
             }
             action={
               <Button variant="outline" size="sm" onClick={() => navigate('/training')}>

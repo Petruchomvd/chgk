@@ -1,6 +1,7 @@
 import sqlite3
 
 from app.training_engine import (
+    browse_tournaments,
     get_pack_tours,
     get_recent_tournaments,
     search_tournaments,
@@ -18,7 +19,9 @@ def _make_conn() -> sqlite3.Connection:
             id INTEGER PRIMARY KEY,
             title TEXT,
             difficulty REAL,
-            link TEXT
+            link TEXT,
+            start_date TEXT,
+            published_date TEXT
         );
         CREATE TABLE questions (
             id INTEGER PRIMARY KEY,
@@ -140,6 +143,36 @@ def test_get_recent_tournaments_returns_latest_by_id():
         conn.close()
 
     assert [pack["id"] for pack in results] == [5, 3, 1]
+
+
+def test_browse_tournaments_filters_by_year_and_reports_catalog_years():
+    conn = _make_conn()
+    try:
+        conn.executemany(
+            "INSERT INTO packs(id, title, difficulty, link, start_date) VALUES (?, ?, ?, ?, ?)",
+            [
+                (1, "Кубок весны", 4.0, None, "2024-04-01"),
+                (2, "Кубок осени", 4.0, None, "2025-10-01"),
+                (3, "Кубок зимы", 4.0, None, "2025-12-01"),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO questions(id, pack_id, tour_number, number, text, answer) VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (11, 1, 1, 1, "Q1", "A1"),
+                (21, 2, 1, 1, "Q2", "A2"),
+                (31, 3, 1, 1, "Q3", "A3"),
+            ],
+        )
+
+        page = browse_tournaments(conn, query="кубок", year=2025, limit=1)
+    finally:
+        conn.close()
+
+    assert page["total"] == 2
+    assert page["years"] == [2025, 2024]
+    assert len(page["items"]) == 1
+    assert page["items"][0]["year"] == "2025"
 
 
 def test_get_pack_tours_groups_questions_by_tour():

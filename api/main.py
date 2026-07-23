@@ -16,6 +16,8 @@ import sys
 import time
 import uuid
 from collections import defaultdict, deque
+from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -35,11 +37,13 @@ from api.auth import (
     authenticate,
     cookie_secure,
     create_session,
+    hash_password,
     require_current_user,
     require_owner,
     reset_current_user,
     session_from_request,
     set_current_user,
+    validate_username,
 )
 from app import study
 from app import training_engine as engine
@@ -47,6 +51,7 @@ from config import DB_PATH, PROJECT_ROOT
 from database.training_db import (
     TRAINING_DB_PATH,
     count_due,
+    get_progress_metrics,
     get_stats,
     get_training_connection,
 )
@@ -140,6 +145,13 @@ class LoginRequest(BaseModel):
     remember: bool = True
 
 
+class CreatePlayerRequest(BaseModel):
+    username: str
+    display_name: str
+    password: str
+    telegram_id: Optional[int] = None
+
+
 def _user_payload(user, csrf_token: str) -> Dict[str, Any]:
     return {
         "user": {
@@ -199,6 +211,78 @@ def auth_logout(response: Response):
         samesite="lax",
     )
     return {"ok": True}
+
+
+@app.post("/api/admin/users")
+def create_player(req: CreatePlayerRequest):
+    """Создать аккаунт игрока из интерфейса владельца."""
+    require_owner()
+    try:
+        username = validate_username(req.username)
+        digest, salt = hash_password(req.password)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    display_name = req.display_name.strip()
+    if not display_name:
+        raise HTTPException(400, "Укажите имя игрока")
+    if req.telegram_id is not None and req.telegram_id <= 0:
+        raise HTTPException(400, "Telegram ID должен быть положительным числом")
+
+    conn = get_training_connection()
+    try:
+        if req.telegram_id is not None:
+            user_id = req.telegram_id
+        else:
+            row = conn.execute(
+                "SELECT MIN(id) AS min_id FROM users WHERE id < 0"
+            ).fetchone()
+            user_id = (row["min_id"] - 1) if row and row["min_id"] is not None else -1
+
+        now = datetime.now().isoformat(timespec="seconds")
+        try:
+            conn.execute(
+                """
+                INSERT INTO users (
+                    id, username, display_name, password_hash, password_salt,
+                    role, active, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'player', 1, ?, ?)
+                """,
+                (
+                    user_id,
+                    username,
+                    display_name,
+                    digest,
+                    salt,
+                    now,
+                    now,
+                ),
+            )
+            if req.telegram_id is not None:
+                conn.execute(
+                    """
+                    INSERT INTO user_identities (
+                        user_id, provider, provider_user_id, created_at
+                    ) VALUES (?, 'telegram', ?, ?)
+                    """,
+                    (user_id, str(req.telegram_id), now),
+                )
+            conn.commit()
+        except sqlite3.IntegrityError as exc:
+            conn.rollback()
+            raise HTTPException(
+                409, "Такой логин или Telegram ID уже используется"
+            ) from exc
+    finally:
+        conn.close()
+
+    return {
+        "id": user_id,
+        "username": username,
+        "display_name": display_name,
+        "role": "player",
+        "active": True,
+    }
 
 
 def chgk_conn() -> sqlite3.Connection:
@@ -279,6 +363,7 @@ def meta():
             "features": {
                 "semantic_map": semantic.map_available(),
                 "semantic_search": semantic.text_search_available(),
+                "fact_cards": bool(_fact_cards()),
             },
         }
     finally:
@@ -292,7 +377,17 @@ def overview():
     tconn = get_training_connection()
     try:
         stats = get_stats(tconn, user_id)
+        progress = get_progress_metrics(tconn, user_id)
         base = get_overview_stats(conn)
+        performance = catalog.category_performance(conn, user_id)
+        side_size = min(4, max(1, len(performance) // 2))
+        strong = performance[:side_size]
+        strong_names = {row["category"] for row in strong}
+        weak = [
+            item
+            for item in reversed(performance[-side_size:])
+            if item["category"] not in strong_names
+        ]
         active = [
             {"session_id": sid, **_state(sid, s)}
             for sid, (owner_id, s) in _SESSIONS.items()
@@ -301,8 +396,10 @@ def overview():
         return {
             "due_count": count_due(tconn, user_id),
             "stats": stats,
+            "progress": progress,
             "base": base,
-            "weak_categories": catalog.weak_categories(conn, user_id),
+            "strong_categories": strong,
+            "weak_categories": weak,
             "recent": catalog.recent_attempts(conn, user_id),
             "activity": catalog.activity_by_day(conn, user_id),
             "active_session": active[0] if active else None,
@@ -622,18 +719,34 @@ def study_canon(category_id: Optional[int] = None, limit: int = 40):
     }
 
 
-FACT_CARDS_PATH = PROJECT_ROOT / "data" / "facts" / "fact_cards.json"
+_configured_fact_cards_path = Path(
+    os.environ.get(
+        "CHGK_FACT_CARDS_PATH",
+        str(PROJECT_ROOT / "data" / "facts" / "fact_cards.json"),
+    )
+).expanduser()
+FACT_CARDS_PATH = (
+    _configured_fact_cards_path
+    if _configured_fact_cards_path.is_absolute()
+    else PROJECT_ROOT / _configured_fact_cards_path
+)
+
+
+@lru_cache(maxsize=1)
+def _fact_cards() -> dict:
+    """Загрузить подготовленные карточки один раз на процесс."""
+    if not FACT_CARDS_PATH.exists():
+        return {}
+    try:
+        data = json.loads(FACT_CARDS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _load_fact_card(answer: str) -> Optional[dict]:
     """Сгенерированная карточка (ядро + зацепки), если есть. Файл — gen_facts.py."""
-    if not FACT_CARDS_PATH.exists():
-        return None
-    try:
-        cards = json.loads(FACT_CARDS_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    card = cards.get(study.normalize_answer(answer))
+    card = _fact_cards().get(study.normalize_answer(answer))
     if not card:
         return None
     # В учебник — только подтверждённые заземлением зацепки.
@@ -664,12 +777,21 @@ def topics(model_name: Optional[str] = None):
 
 
 @app.get("/api/tournaments")
-def tournaments(search: str = "", limit: int = 20):
+def tournaments(
+    search: str = "",
+    year: Optional[int] = None,
+    limit: int = Query(60, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
     conn = chgk_conn()
     try:
-        if search.strip():
-            return {"items": engine.search_tournaments(conn, search, limit)}
-        return {"items": engine.get_recent_tournaments(conn, limit)}
+        return engine.browse_tournaments(
+            conn,
+            query=search,
+            year=year,
+            limit=limit,
+            offset=offset,
+        )
     finally:
         conn.close()
 
@@ -701,6 +823,10 @@ def training_start(req: StartRequest):
 
         if req.mode == "random":
             s = engine.start_random(conn, req.count, req.seed, rng, technique=req.technique)
+        elif req.mode == "marked":
+            s = engine.start_marked(
+                conn, req.count, req.seed, rng, technique=req.technique
+            )
         elif req.mode == "category":
             if not req.category_ids:
                 raise HTTPException(400, "Не выбрана ни одна категория")

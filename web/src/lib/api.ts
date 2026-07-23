@@ -17,6 +17,7 @@ export interface Meta {
   features: {
     semantic_map: boolean
     semantic_search: boolean
+    fact_cards: boolean
   }
 }
 
@@ -170,6 +171,13 @@ export interface Overview {
     by_category: { category: string; total: number; knew: number }[]
     by_box: { box: number; c: number }[]
   }
+  progress: {
+    active_days_30: number
+    current_streak: number
+    recent_success_pct: number | null
+    recent_sample: number
+    recent_avg_seconds: number | null
+  }
   base: {
     total_questions: number
     total_packs: number
@@ -177,6 +185,12 @@ export interface Overview {
     classification_pct: number
   }
   weak_categories: {
+    category: string
+    attempts_count: number
+    knew_count: number
+    success_pct: number
+  }[]
+  strong_categories: {
     category: string
     attempts_count: number
     knew_count: number
@@ -200,6 +214,13 @@ export interface Tournament {
   title: string
   difficulty: number | null
   questions_count: number
+  year: string | null
+}
+
+export interface TournamentPage {
+  items: Tournament[]
+  total: number
+  years: number[]
 }
 
 export class ApiError extends Error {
@@ -482,8 +503,26 @@ export const api = {
     request<StudyCanon>(`/api/study/canon${qs({ category_id, limit })}`),
   studyFact: (answer: string) =>
     request<FactDossier>(`/api/study/fact${qs({ answer })}`),
-  tournaments: (search: string) =>
-    request<{ items: Tournament[] }>(`/api/tournaments${qs({ search })}`),
+  tournaments: (search = '', year?: number | null, limit = 60) =>
+    request<TournamentPage>(
+      `/api/tournaments${qs({ search, year, limit })}`,
+    ),
+  createPlayer: (body: {
+    username: string
+    display_name: string
+    password: string
+    telegram_id?: number | null
+  }) =>
+    request<{
+      id: number
+      username: string
+      display_name: string
+      role: 'player'
+      active: boolean
+    }>('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   similar: (id: number, top = 8) =>
     request<SemanticResponse>(`/api/questions/${id}/similar${qs({ top })}`),
   semanticSearch: (q: string, top = 20) =>

@@ -66,6 +66,7 @@ def test_login_cookie_and_csrf_protect_api(tmp_path, monkeypatch):
         return get_training_connection(db_path)
 
     monkeypatch.setattr(auth, "get_training_connection", connection)
+    monkeypatch.setattr(main, "get_training_connection", connection)
     monkeypatch.setenv("CHGK_SESSION_SECRET", "integration-test-secret")
     monkeypatch.setenv("CHGK_COOKIE_SECURE", "0")
 
@@ -122,6 +123,40 @@ def test_login_cookie_and_csrf_protect_api(tmp_path, monkeypatch):
         assert login.json()["user"]["id"] == 42
 
         assert client.get("/api/auth/session").status_code == 200
+        assert (
+            client.post(
+                "/api/admin/users",
+                json={
+                    "username": "anna",
+                    "display_name": "Анна",
+                    "password": "temporary password",
+                },
+            ).status_code
+            == 403
+        )
+        created = client.post(
+            "/api/admin/users",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "username": "anna",
+                "display_name": "Анна",
+                "password": "temporary password",
+            },
+        )
+        assert created.status_code == 200
+        assert created.json()["id"] < 0
+        assert (
+            client.post(
+                "/api/admin/users",
+                headers={"X-CSRF-Token": csrf},
+                json={
+                    "username": "anna",
+                    "display_name": "Анна",
+                    "password": "temporary password",
+                },
+            ).status_code
+            == 409
+        )
         assert client.post("/api/auth/logout").status_code == 403
         assert (
             client.post(
@@ -141,6 +176,19 @@ def test_login_cookie_and_csrf_protect_api(tmp_path, monkeypatch):
         )
         assert player_login.status_code == 200
         assert player_login.json()["user"]["role"] == "player"
+        player_csrf = player_login.json()["csrf_token"]
+        assert (
+            client.post(
+                "/api/admin/users",
+                headers={"X-CSRF-Token": player_csrf},
+                json={
+                    "username": "ivan",
+                    "display_name": "Иван",
+                    "password": "temporary password",
+                },
+            ).status_code
+            == 403
+        )
         assert client.get("/api/team/dossier").status_code == 403
         assert client.get("/api/team/forecast?pack=1").status_code == 403
         assert client.get("/api/semantic/map").status_code == 403

@@ -410,6 +410,29 @@ def weak_categories(
     """, (user_id, min_attempts, limit)).fetchall()]
 
 
+def category_performance(
+    conn: sqlite3.Connection, user_id: int, min_attempts: int = 2
+) -> List[Dict[str, Any]]:
+    """Результаты по темам для сравнительного блока прогресса."""
+    return [
+        dict(r)
+        for r in conn.execute(
+            """
+            SELECT category,
+                   COUNT(*) AS attempts_count,
+                   SUM(knew) AS knew_count,
+                   ROUND(100.0 * SUM(knew) / COUNT(*)) AS success_pct
+            FROM t.attempts
+            WHERE user_id = ? AND category IS NOT NULL AND category != ''
+            GROUP BY category
+            HAVING COUNT(*) >= ?
+            ORDER BY success_pct DESC, attempts_count DESC, category
+            """,
+            (user_id, min_attempts),
+        ).fetchall()
+    ]
+
+
 def activity_by_day(
     conn: sqlite3.Connection, user_id: int, days: int = 30
 ) -> List[Dict[str, Any]]:

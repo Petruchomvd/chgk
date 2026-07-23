@@ -268,11 +268,11 @@ def _update_leitner(
 
     if knew:
         if row is None:
-            new_box = 2
-            consec = 1
-        else:
-            new_box = min(row["box"] + 1, MAX_BOX)
-            consec = row["consecutive_correct"] + 1
+            # Правильный с первой попытки вопрос не надо заучивать дословно:
+            # в ЧГК он больше не встретится. Очередь нужна только для ошибок.
+            return
+        new_box = min(row["box"] + 1, MAX_BOX)
+        consec = row["consecutive_correct"] + 1
     else:
         new_box = 1
         consec = 0
@@ -340,8 +340,19 @@ def get_due_question_ids(
     """Question ids due for review for one user."""
     now = _now_iso()
     rows = conn.execute(
-        "SELECT question_id FROM leitner WHERE user_id = ? AND next_review_at <= ? "
-        "ORDER BY next_review_at ASC LIMIT ?",
+        """
+        SELECT l.question_id
+        FROM leitner l
+        WHERE l.user_id = ? AND l.next_review_at <= ?
+          AND EXISTS (
+              SELECT 1 FROM attempts a
+              WHERE a.user_id = l.user_id
+                AND a.question_id = l.question_id
+                AND a.knew = 0
+          )
+        ORDER BY l.next_review_at ASC
+        LIMIT ?
+        """,
         (user_id, now, limit),
     ).fetchall()
     return [r["question_id"] for r in rows]
@@ -350,7 +361,17 @@ def get_due_question_ids(
 def count_due(conn: sqlite3.Connection, user_id: int) -> int:
     now = _now_iso()
     row = conn.execute(
-        "SELECT COUNT(*) AS c FROM leitner WHERE user_id = ? AND next_review_at <= ?",
+        """
+        SELECT COUNT(*) AS c
+        FROM leitner l
+        WHERE l.user_id = ? AND l.next_review_at <= ?
+          AND EXISTS (
+              SELECT 1 FROM attempts a
+              WHERE a.user_id = l.user_id
+                AND a.question_id = l.question_id
+                AND a.knew = 0
+          )
+        """,
         (user_id, now),
     ).fetchone()
     return row["c"]
@@ -381,7 +402,19 @@ def get_stats(conn: sqlite3.Connection, user_id: int) -> dict:
     ).fetchall()
 
     by_box = conn.execute(
-        "SELECT box, COUNT(*) AS c FROM leitner WHERE user_id = ? GROUP BY box ORDER BY box",
+        """
+        SELECT l.box, COUNT(*) AS c
+        FROM leitner l
+        WHERE l.user_id = ?
+          AND EXISTS (
+              SELECT 1 FROM attempts a
+              WHERE a.user_id = l.user_id
+                AND a.question_id = l.question_id
+                AND a.knew = 0
+          )
+        GROUP BY l.box
+        ORDER BY l.box
+        """,
         (user_id,),
     ).fetchall()
 
@@ -392,4 +425,53 @@ def get_stats(conn: sqlite3.Connection, user_id: int) -> dict:
         "due_now": due,
         "by_category": [dict(r) for r in by_cat],
         "by_box": [dict(r) for r in by_box],
+    }
+
+
+def get_progress_metrics(conn: sqlite3.Connection, user_id: int) -> dict:
+    """Небольшие показатели динамики, которые дополняют общий процент."""
+    rows = conn.execute(
+        """
+        SELECT substr(attempted_at, 1, 10) AS day
+        FROM attempts
+        WHERE user_id = ?
+        GROUP BY substr(attempted_at, 1, 10)
+        ORDER BY day DESC
+        """,
+        (user_id,),
+    ).fetchall()
+    active_days = {row["day"] for row in rows if row["day"]}
+    today = datetime.now().date()
+    streak = 0
+    cursor = today
+    while cursor.isoformat() in active_days:
+        streak += 1
+        cursor -= timedelta(days=1)
+
+    recent = conn.execute(
+        """
+        SELECT knew, time_seconds
+        FROM attempts
+        WHERE user_id = ?
+        ORDER BY attempted_at DESC, id DESC
+        LIMIT 20
+        """,
+        (user_id,),
+    ).fetchall()
+    recent_success = (
+        round(100 * sum(row["knew"] for row in recent) / len(recent))
+        if recent
+        else None
+    )
+    timed = [row["time_seconds"] for row in recent if row["time_seconds"] is not None]
+    return {
+        "active_days_30": sum(
+            1
+            for day in active_days
+            if day >= (today - timedelta(days=29)).isoformat()
+        ),
+        "current_streak": streak,
+        "recent_success_pct": recent_success,
+        "recent_sample": len(recent),
+        "recent_avg_seconds": round(sum(timed) / len(timed), 1) if timed else None,
     }

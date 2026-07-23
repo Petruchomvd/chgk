@@ -176,7 +176,15 @@ class VkApi:
         }
         if keyboard is not None:
             params["keyboard"] = json.dumps(keyboard, ensure_ascii=False)
-        self.call("messages.send", **params)
+        try:
+            self.call("messages.send", **params)
+        except RuntimeError as exc:
+            if keyboard is None or "'error_code': 912" not in str(exc):
+                raise
+            log.warning("VK keyboard is disabled in community settings; sending text only.")
+            params.pop("keyboard", None)
+            params["random_id"] = random.randint(1, 2_147_483_647)
+            self.call("messages.send", **params)
 
 
 def _text_button(label: str, command: str, color: str = "secondary") -> dict[str, Any]:

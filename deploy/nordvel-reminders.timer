@@ -1,8 +1,8 @@
 [Unit]
-Description=Daily Nordvel private reminder notifications
+Description=Nordvel private reminder notifications
 
 [Timer]
-OnCalendar=*-*-* 09:00:00
+OnCalendar=hourly
 Persistent=true
 RandomizedDelaySec=5m
 Unit=nordvel-reminders.service

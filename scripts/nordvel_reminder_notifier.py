@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
@@ -21,6 +22,9 @@ STATE_PATH = Path(
 )
 PLANNER_URL = os.environ.get("NORDVEL_REMINDER_PUBLIC_URL", "https://nordvel.ru/planner.html")
 REQUEST_TIMEOUT = 20
+REPEAT_NOTIFY_MODE = "due_day_repeat"
+SINGLE_NOTIFY_MODE = "single"
+DEFAULT_NOTIFICATION_SLOTS = {9, 13, 18, 21}
 
 
 @dataclass(frozen=True)
@@ -32,6 +36,7 @@ class Reminder:
     category: str
     notes: str
     lead_days: int
+    notify_mode: str
 
 
 def _parse_id_list(raw: str) -> list[int]:
@@ -54,6 +59,26 @@ def _target_ids(primary_env: str, fallback_env: str) -> list[int]:
     if explicit:
         return explicit
     return _parse_id_list(os.environ.get(fallback_env, ""))
+
+
+def _notification_timezone() -> ZoneInfo:
+    name = os.environ.get("NORDVEL_REMINDER_TIMEZONE", "Europe/Samara").strip()
+    try:
+        return ZoneInfo(name)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
+
+
+def _notification_slots() -> set[int]:
+    raw = os.environ.get("NORDVEL_REMINDER_HOURS", "")
+    if not raw:
+        return DEFAULT_NOTIFICATION_SLOTS
+    slots = {hour for hour in _parse_id_list(raw) if 0 <= hour <= 23}
+    return slots or DEFAULT_NOTIFICATION_SLOTS
+
+
+def _should_send_at(run_at: datetime) -> bool:
+    return run_at.hour in _notification_slots()
 
 
 def _load_json(path: Path, default: Any) -> Any:
@@ -93,6 +118,7 @@ def _load_reminders(path: Path = REMINDERS_PATH) -> list[Reminder]:
                 category=str(item.get("category") or "Личное").strip(),
                 notes=str(item.get("notes") or "").strip(),
                 lead_days=int(item.get("lead_days") or 0),
+                notify_mode=str(item.get("notify_mode") or REPEAT_NOTIFY_MODE).strip(),
             )
         except (KeyError, TypeError, ValueError):
             continue
@@ -141,26 +167,40 @@ def _build_digest(reminders: list[Reminder], today: date) -> str:
     return "\n".join(lines)
 
 
-def _notification_key(channel: str, reminder: Reminder) -> str:
-    return f"{channel}:{reminder.id}:{reminder.due_date.isoformat()}"
+def _notification_key(channel: str, reminder: Reminder, today: date, run_at: datetime) -> str:
+    if reminder.notify_mode == SINGLE_NOTIFY_MODE:
+        slot = "single"
+    elif today < reminder.due_date:
+        slot = f"lead:{today.isoformat()}"
+    else:
+        slot = f"due:{today.isoformat()}:{run_at.hour:02d}"
+    return f"{channel}:{reminder.id}:{reminder.due_date.isoformat()}:{slot}"
 
 
 def _filter_unsent(
     channel: str,
     reminders: list[Reminder],
     sent_state: dict[str, str],
+    today: date,
+    run_at: datetime,
 ) -> list[Reminder]:
     return [
         reminder
         for reminder in reminders
-        if _notification_key(channel, reminder) not in sent_state
+        if _notification_key(channel, reminder, today, run_at) not in sent_state
     ]
 
 
-def _mark_sent(channel: str, reminders: list[Reminder], sent_state: dict[str, str]) -> None:
+def _mark_sent(
+    channel: str,
+    reminders: list[Reminder],
+    sent_state: dict[str, str],
+    today: date,
+    run_at: datetime,
+) -> None:
     now = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     for reminder in reminders:
-        sent_state[_notification_key(channel, reminder)] = now
+        sent_state[_notification_key(channel, reminder, today, run_at)] = now
 
 
 def _send_telegram(text: str) -> bool:
@@ -212,8 +252,9 @@ def _send_vk(text: str) -> bool:
     return ok
 
 
-def send_due_notifications(today: date | None = None) -> int:
-    today = today or date.today()
+def send_due_notifications(today: date | None = None, run_at: datetime | None = None) -> int:
+    run_at = run_at or datetime.now()
+    today = today or run_at.date()
     due = _due_reminders(_load_reminders(), today)
     if not due:
         return 0
@@ -228,12 +269,12 @@ def send_due_notifications(today: date | None = None) -> int:
 
     delivered = 0
     for channel, sender in (("telegram", _send_telegram), ("vk", _send_vk)):
-        unsent = _filter_unsent(channel, due, sent)
+        unsent = _filter_unsent(channel, due, sent, today, run_at)
         if not unsent:
             continue
         text = _build_digest(unsent, today)
         if sender(text):
-            _mark_sent(channel, unsent, sent)
+            _mark_sent(channel, unsent, sent, today, run_at)
             delivered += len(unsent)
 
     if delivered:
@@ -242,8 +283,12 @@ def send_due_notifications(today: date | None = None) -> int:
 
 
 def main() -> None:
+    run_at = datetime.now(_notification_timezone())
+    if not _should_send_at(run_at):
+        print(f"Nordvel reminders skipped at {run_at.strftime('%H:%M')}")
+        return
     try:
-        delivered = send_due_notifications()
+        delivered = send_due_notifications(run_at=run_at)
     except Exception as exc:
         print(f"Nordvel reminder notifier failed: {exc}", file=sys.stderr)
         raise

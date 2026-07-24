@@ -2,9 +2,9 @@
 Description=Nordvel private reminder notifications
 
 [Timer]
-OnCalendar=hourly
+OnCalendar=*-*-* *:0/5:00
 Persistent=true
-RandomizedDelaySec=5m
+RandomizedDelaySec=30s
 Unit=nordvel-reminders.service
 
 [Install]

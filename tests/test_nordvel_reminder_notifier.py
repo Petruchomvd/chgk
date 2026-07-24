@@ -122,6 +122,43 @@ def test_due_day_repeat_mode_can_send_in_multiple_day_slots(tmp_path, monkeypatc
     assert len(sent_messages) == 4
 
 
+def test_due_time_sends_after_exact_time(tmp_path, monkeypatch):
+    module = _load_module(tmp_path, monkeypatch)
+    Path(module.REMINDERS_PATH).write_text(
+        json.dumps(
+            [
+                {
+                    "id": "abc",
+                    "title": "Несколько раз в день события",
+                    "due_date": "2026-07-24",
+                    "due_time": "08:22",
+                    "category": "Личное",
+                    "lead_days": 0,
+                    "notify_mode": "due_day_repeat",
+                    "done": False,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    sent_messages: list[str] = []
+    monkeypatch.setattr(module, "_send_telegram", lambda text: sent_messages.append(f"tg:{text}") or True)
+    monkeypatch.setattr(module, "_send_vk", lambda text: sent_messages.append(f"vk:{text}") or True)
+
+    before_time = module.send_due_notifications(date(2026, 7, 24), datetime(2026, 7, 24, 8, 20))
+    after_time = module.send_due_notifications(date(2026, 7, 24), datetime(2026, 7, 24, 8, 25))
+    same_exact_notification = module.send_due_notifications(
+        date(2026, 7, 24), datetime(2026, 7, 24, 8, 30)
+    )
+    later_slot = module.send_due_notifications(date(2026, 7, 24), datetime(2026, 7, 24, 13, 0))
+
+    assert before_time == 0
+    assert after_time == 2
+    assert same_exact_notification == 0
+    assert later_slot == 2
+    assert len(sent_messages) == 4
+
+
 def test_notification_hours_are_configurable(tmp_path, monkeypatch):
     module = _load_module(tmp_path, monkeypatch)
 

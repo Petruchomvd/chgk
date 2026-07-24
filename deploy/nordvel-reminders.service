@@ -1,0 +1,18 @@
+[Unit]
+Description=Nordvel private reminder notifications
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+EnvironmentFile=/etc/chgk/chgk.env
+WorkingDirectory=/opt/chgk/current
+ExecStart=/opt/chgk/venv/bin/python scripts/nordvel_reminder_notifier.py
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/opt/chgk/current
+ReadWritePaths=/var/lib/nordvel

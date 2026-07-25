@@ -4,6 +4,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
+from bot.identity import resolve_telegram_training_user_id
 from bot.keyboards import main_menu
 from database.training_db import get_stats, get_training_connection
 
@@ -53,12 +54,18 @@ async def cmd_cancel(message: Message, state: FSMContext) -> None:
 
 @router.message(Command("stats"))
 async def cmd_stats(message: Message) -> None:
-    await _send_stats(message, message.from_user.id)
+    await _send_stats(
+        message,
+        resolve_telegram_training_user_id(message.from_user.id, message.from_user.username),
+    )
 
 
 @router.callback_query(F.data == "cmd:stats")
 async def cb_stats(cb: CallbackQuery) -> None:
-    await _send_stats(cb.message, cb.from_user.id)
+    await _send_stats(
+        cb.message,
+        resolve_telegram_training_user_id(cb.from_user.id, cb.from_user.username),
+    )
     await cb.answer()
 
 

@@ -159,6 +159,32 @@ def test_login_cookie_and_csrf_protect_api(tmp_path, monkeypatch):
             conn.close()
         assert identity is not None
         assert identity["user_id"] == created.json()["id"]
+        created_tg = client.post(
+            "/api/admin/users",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "username": "zhenya",
+                "display_name": "Женя",
+                "password": "temporary password",
+                "telegram_id": "@mtv3dd",
+            },
+        )
+        assert created_tg.status_code == 200
+        assert created_tg.json()["id"] < 0
+        assert created_tg.json()["id"] != created.json()["id"]
+        conn = connection()
+        try:
+            tg_identity = conn.execute(
+                """
+                SELECT user_id
+                FROM user_identities
+                WHERE provider = 'telegram_username' AND provider_user_id = 'mtv3dd'
+                """
+            ).fetchone()
+        finally:
+            conn.close()
+        assert tg_identity is not None
+        assert tg_identity["user_id"] == created_tg.json()["id"]
         assert (
             client.post(
                 "/api/admin/users",

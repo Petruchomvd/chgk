@@ -27,6 +27,7 @@ from app.training_engine import (
     start_team_gap,
     submit_answer,
 )
+from bot.identity import resolve_telegram_training_user_id
 from bot.keyboards import (
     after_finish,
     categories_menu,
@@ -54,6 +55,10 @@ _sessions: Dict[int, TrainingSession] = {}
 
 def _get_chgk_conn():
     return get_connection(DB_PATH)
+
+
+def _training_user_id(user) -> int:
+    return resolve_telegram_training_user_id(user.id, user.username)
 
 
 def _get_session(user_id: int) -> Optional[TrainingSession]:
@@ -90,7 +95,7 @@ def _razdatka_pic_url(raw_url: Optional[str]) -> Optional[str]:
 
 @router.message(Command("train"))
 async def cmd_train(message: Message, state: FSMContext) -> None:
-    await _open_train_menu(message, state, message.from_user.id)
+    await _open_train_menu(message, state, _training_user_id(message.from_user))
 
 
 async def _open_train_menu(message: Message, state: FSMContext, user_id: int) -> None:
@@ -111,7 +116,7 @@ async def _open_train_menu(message: Message, state: FSMContext, user_id: int) ->
 
 @router.callback_query(F.data == "cmd:train")
 async def cb_train(cb: CallbackQuery, state: FSMContext) -> None:
-    await _open_train_menu(cb.message, state, cb.from_user.id)
+    await _open_train_menu(cb.message, state, _training_user_id(cb.from_user))
     await cb.answer()
 
 
@@ -151,9 +156,9 @@ async def _start_session_random(cb: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         return
 
-    _set_session(cb.from_user.id, session)
+    _set_session(_training_user_id(cb.from_user), session)
     await cb.message.edit_text(f"Старт: {session.filters_repr}")
-    await _show_question(cb.message, state, cb.from_user.id)
+    await _show_question(cb.message, state, _training_user_id(cb.from_user))
 
 
 async def _ask_category(cb: CallbackQuery, state: FSMContext) -> None:
@@ -187,9 +192,9 @@ async def cb_category(cb: CallbackQuery, state: FSMContext) -> None:
         await cb.answer()
         return
 
-    _set_session(cb.from_user.id, session)
+    _set_session(_training_user_id(cb.from_user), session)
     await cb.message.edit_text(f"Старт: {session.filters_repr}")
-    await _show_question(cb.message, state, cb.from_user.id)
+    await _show_question(cb.message, state, _training_user_id(cb.from_user))
     await cb.answer()
 
 
@@ -223,7 +228,7 @@ async def msg_tournament_query(message: Message, state: FSMContext) -> None:
             await _choose_or_start_tournament_session(
                 message,
                 state,
-                message.from_user.id,
+                _training_user_id(message.from_user),
                 int(query),
             )
             return
@@ -245,7 +250,7 @@ async def msg_tournament_query(message: Message, state: FSMContext) -> None:
         await _choose_or_start_tournament_session(
             message,
             state,
-            message.from_user.id,
+            _training_user_id(message.from_user),
             exact_matches[0]["id"],
         )
         return
@@ -269,7 +274,7 @@ async def cb_tournament(cb: CallbackQuery, state: FSMContext) -> None:
     await _choose_or_start_tournament_session(
         cb.message,
         state,
-        cb.from_user.id,
+        _training_user_id(cb.from_user),
         int(payload),
         edit=True,
     )
@@ -289,7 +294,7 @@ async def cb_tournament_tour(cb: CallbackQuery, state: FSMContext) -> None:
     await _start_tournament_session(
         cb.message,
         state,
-        cb.from_user.id,
+        _training_user_id(cb.from_user),
         int(pack_id_raw),
         int(tour_number_raw),
         edit=True,
@@ -371,7 +376,7 @@ async def _start_session_team_gap(cb: CallbackQuery, state: FSMContext) -> None:
     chgk_conn = _get_chgk_conn()
     tconn = get_training_connection()
     try:
-        session = start_team_gap(chgk_conn, tconn, cb.from_user.id, count=DEFAULT_COUNT)
+        session = start_team_gap(chgk_conn, tconn, _training_user_id(cb.from_user), count=DEFAULT_COUNT)
     except FileNotFoundError:
         await cb.message.edit_text(
             "Профиль слабых тем не найден. Сначала построй его: "
@@ -388,16 +393,16 @@ async def _start_session_team_gap(cb: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         return
 
-    _set_session(cb.from_user.id, session)
+    _set_session(_training_user_id(cb.from_user), session)
     await cb.message.edit_text(f"Старт: {session.filters_repr}")
-    await _show_question(cb.message, state, cb.from_user.id)
+    await _show_question(cb.message, state, _training_user_id(cb.from_user))
 
 
 async def _start_session_followup(cb: CallbackQuery, state: FSMContext) -> None:
     chgk_conn = _get_chgk_conn()
     tconn = get_training_connection()
     try:
-        session = start_followup(chgk_conn, tconn, cb.from_user.id, count=DEFAULT_COUNT)
+        session = start_followup(chgk_conn, tconn, _training_user_id(cb.from_user), count=DEFAULT_COUNT)
     finally:
         chgk_conn.close()
         tconn.close()
@@ -409,15 +414,15 @@ async def _start_session_followup(cb: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         return
 
-    _set_session(cb.from_user.id, session)
+    _set_session(_training_user_id(cb.from_user), session)
     await cb.message.edit_text(f"Старт: {session.filters_repr}")
-    await _show_question(cb.message, state, cb.from_user.id)
+    await _show_question(cb.message, state, _training_user_id(cb.from_user))
 
 
 async def _start_session_review(cb: CallbackQuery, state: FSMContext) -> None:
     chgk_conn = _get_chgk_conn()
     tconn = get_training_connection()
-    session = start_review(chgk_conn, tconn, cb.from_user.id, count=DEFAULT_COUNT)
+    session = start_review(chgk_conn, tconn, _training_user_id(cb.from_user), count=DEFAULT_COUNT)
     chgk_conn.close()
     tconn.close()
 
@@ -428,9 +433,9 @@ async def _start_session_review(cb: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         return
 
-    _set_session(cb.from_user.id, session)
+    _set_session(_training_user_id(cb.from_user), session)
     await cb.message.edit_text(f"Старт: {session.filters_repr}")
-    await _show_question(cb.message, state, cb.from_user.id)
+    await _show_question(cb.message, state, _training_user_id(cb.from_user))
 
 
 async def _show_question(message: Message, state: FSMContext, user_id: int) -> None:
@@ -455,7 +460,7 @@ async def _show_question(message: Message, state: FSMContext, user_id: int) -> N
 
 @router.message(TrainingFlow.in_question)
 async def msg_user_answer(message: Message, state: FSMContext) -> None:
-    user_id = message.from_user.id
+    user_id = _training_user_id(message.from_user)
     session = _get_session(user_id)
     if session is None:
         await message.answer("Сессия не найдена. /train для старта.")
@@ -467,7 +472,7 @@ async def msg_user_answer(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "quiz:reveal", TrainingFlow.in_question)
 async def cb_reveal(cb: CallbackQuery, state: FSMContext) -> None:
-    user_id = cb.from_user.id
+    user_id = _training_user_id(cb.from_user)
     session = _get_session(user_id)
     if session is None:
         await cb.message.answer("Сессия не найдена. /train для старта.")
@@ -506,7 +511,7 @@ async def _reveal(message: Message, state: FSMContext, user_id: int) -> None:
 
 @router.callback_query(F.data.in_({"quiz:knew", "quiz:didnt"}), TrainingFlow.in_reveal)
 async def cb_self_assess(cb: CallbackQuery, state: FSMContext) -> None:
-    user_id = cb.from_user.id
+    user_id = _training_user_id(cb.from_user)
     session = _get_session(user_id)
     if session is None:
         await cb.message.answer("Сессия не найдена.")
@@ -530,7 +535,7 @@ async def cb_self_assess(cb: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "quiz:abort")
 async def cb_abort(cb: CallbackQuery, state: FSMContext) -> None:
-    user_id = cb.from_user.id
+    user_id = _training_user_id(cb.from_user)
     if _get_session(user_id):
         await _show_summary(cb.message, user_id)
     _clear_session(user_id)

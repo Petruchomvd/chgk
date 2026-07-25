@@ -224,12 +224,8 @@ export function TeamDossier() {
         display_name: playerForm.display_name.trim(),
         username: playerForm.username.trim(),
         password: playerForm.password,
-        telegram_id: playerForm.telegram_id.trim()
-          ? Number(playerForm.telegram_id)
-          : null,
-        vk_id: playerForm.vk_id.trim()
-          ? Number(playerForm.vk_id)
-          : null,
+        telegram_id: playerForm.telegram_id.trim() || null,
+        vk_id: playerForm.vk_id.trim() || null,
       }),
     onSuccess: () => {
       setPlayerForm({
@@ -341,27 +337,46 @@ export function TeamDossier() {
                 />
               </label>
               <label className="space-y-1 text-2xs font-medium">
-                <span>Telegram ID <span className="font-normal text-muted-foreground">необязательно</span></span>
+                <span>
+                  Telegram{' '}
+                  <span className="font-normal text-muted-foreground">
+                    ID или @username, необязательно
+                  </span>
+                </span>
                 <Input
-                  type="number"
-                  min={1}
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   value={playerForm.telegram_id}
                   onChange={(event) =>
-                    setPlayerForm((form) => ({ ...form, telegram_id: event.target.value }))
+                    setPlayerForm((form) => ({
+                      ...form,
+                      telegram_id: event.target.value,
+                    }))
                   }
-                  placeholder="Для общей истории с ботом"
+                  placeholder="@mtv3dd или 123456789"
                 />
               </label>
               <label className="space-y-1 text-2xs font-medium">
                 <span>VK ID <span className="font-normal text-muted-foreground">необязательно</span></span>
                 <Input
-                  type="number"
-                  min={1}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                   value={playerForm.vk_id}
                   onChange={(event) =>
-                    setPlayerForm((form) => ({ ...form, vk_id: event.target.value }))
+                    setPlayerForm((form) => ({
+                      ...form,
+                      vk_id: event.target.value,
+                    }))
                   }
-                  placeholder="Для общей истории с VK-ботом"
+                  placeholder="Числовой ID для истории с VK-ботом"
                 />
               </label>
             </div>

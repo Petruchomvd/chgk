@@ -16,6 +16,7 @@ from aiogram.types import BotCommand, CallbackQuery, Message
 
 import config  # loads .env  # noqa: F401
 from bot.handlers import common, study, training
+from bot.identity import telegram_identity_exists
 
 logging.basicConfig(
     level=logging.INFO,
@@ -89,7 +90,13 @@ def _make_access_filter(allowed_user_ids: set[int] | None):
                 await event.answer("Бот работает только в личке.", show_alert=True)
             return
 
-        if allowed_user_ids and (user_id is None or user_id not in allowed_user_ids):
+        if allowed_user_ids and (
+            user_id is None
+            or (
+                user_id not in allowed_user_ids
+                and not telegram_identity_exists(user_id, username)
+            )
+        ):
             log.warning(
                 "blocked by allowlist: user_id=%s username=%s allowed=%s",
                 user_id,

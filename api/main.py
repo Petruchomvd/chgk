@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -149,8 +150,36 @@ class CreatePlayerRequest(BaseModel):
     username: str
     display_name: str
     password: str
-    telegram_id: Optional[int] = None
-    vk_id: Optional[int] = None
+    telegram_id: Optional[int | str] = None
+    vk_id: Optional[int | str] = None
+
+
+def _normalize_telegram_identity(value: int | str | None) -> tuple[str, str, int | None] | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    if raw.isdigit():
+        if int(raw) <= 0:
+            raise HTTPException(400, "Telegram ID должен быть положительным числом")
+        return ("telegram", raw, int(raw))
+
+    username = raw[1:] if raw.startswith("@") else raw
+    if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", username):
+        raise HTTPException(400, "Telegram можно указать числом или username вида @mtv3dd")
+    return ("telegram_username", username.lower(), None)
+
+
+def _normalize_numeric_identity(value: int | str | None, label: str) -> str | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    if not raw.isdigit() or int(raw) <= 0:
+        raise HTTPException(400, f"{label} должен быть положительным числом")
+    return raw
 
 
 def _user_payload(user, csrf_token: str) -> Dict[str, Any]:
@@ -227,15 +256,13 @@ def create_player(req: CreatePlayerRequest):
     display_name = req.display_name.strip()
     if not display_name:
         raise HTTPException(400, "Укажите имя игрока")
-    if req.telegram_id is not None and req.telegram_id <= 0:
-        raise HTTPException(400, "Telegram ID должен быть положительным числом")
-    if req.vk_id is not None and req.vk_id <= 0:
-        raise HTTPException(400, "VK ID должен быть положительным числом")
+    telegram_identity = _normalize_telegram_identity(req.telegram_id)
+    vk_identity = _normalize_numeric_identity(req.vk_id, "VK ID")
 
     conn = get_training_connection()
     try:
-        if req.telegram_id is not None:
-            user_id = req.telegram_id
+        if telegram_identity and telegram_identity[0] == "telegram":
+            user_id = telegram_identity[2]
         else:
             row = conn.execute(
                 "SELECT MIN(id) AS min_id FROM users WHERE id < 0"
@@ -261,29 +288,29 @@ def create_player(req: CreatePlayerRequest):
                     now,
                 ),
             )
-            if req.telegram_id is not None:
+            if telegram_identity is not None:
                 conn.execute(
                     """
                     INSERT INTO user_identities (
                         user_id, provider, provider_user_id, created_at
-                    ) VALUES (?, 'telegram', ?, ?)
+                    ) VALUES (?, ?, ?, ?)
                     """,
-                    (user_id, str(req.telegram_id), now),
+                    (user_id, telegram_identity[0], telegram_identity[1], now),
                 )
-            if req.vk_id is not None:
+            if vk_identity is not None:
                 conn.execute(
                     """
                     INSERT INTO user_identities (
                         user_id, provider, provider_user_id, created_at
                     ) VALUES (?, 'vk', ?, ?)
                     """,
-                    (user_id, str(req.vk_id), now),
+                    (user_id, vk_identity, now),
                 )
             conn.commit()
         except sqlite3.IntegrityError as exc:
             conn.rollback()
             raise HTTPException(
-                409, "Такой логин, Telegram ID или VK ID уже используется"
+                409, "Такой логин, Telegram или VK ID уже используется"
             ) from exc
     finally:
         conn.close()

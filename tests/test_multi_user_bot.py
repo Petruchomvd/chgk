@@ -1,5 +1,6 @@
 import sqlite3
 
+from bot.identity import resolve_telegram_training_user_id, telegram_identity_exists
 from bot.main import get_bot_token, parse_allowed_user_ids
 from database.training_db import (
     count_due,
@@ -139,6 +140,56 @@ def test_vk_identity_resolves_to_shared_training_user(tmp_path, monkeypatch):
 
     assert resolve_training_user_id(9001) == -1
     assert resolve_training_user_id(9002) == 9002
+
+
+def test_telegram_username_resolves_and_binds_numeric_id(tmp_path, monkeypatch):
+    db_path = tmp_path / "training.db"
+
+    def connection():
+        return get_training_connection(db_path)
+
+    monkeypatch.setattr("bot.identity.get_training_connection", connection)
+
+    conn = connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, display_name, password_hash, password_salt,
+                role, active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'player', 1, ?, ?)
+            """,
+            (-1, "zhenya", "Женя", b"digest", b"salt", "2026-07-25", "2026-07-25"),
+        )
+        conn.execute(
+            """
+            INSERT INTO user_identities (
+                user_id, provider, provider_user_id, created_at
+            ) VALUES (?, 'telegram_username', ?, ?)
+            """,
+            (-1, "mtv3dd", "2026-07-25"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert telegram_identity_exists(777, "mtv3dd")
+    assert resolve_telegram_training_user_id(777, "mtv3dd") == -1
+
+    conn = connection()
+    try:
+        bound = conn.execute(
+            """
+            SELECT user_id
+            FROM user_identities
+            WHERE provider = 'telegram' AND provider_user_id = '777'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert bound is not None
+    assert bound["user_id"] == -1
 
 
 def test_legacy_training_db_is_migrated_to_owner(tmp_path, monkeypatch):

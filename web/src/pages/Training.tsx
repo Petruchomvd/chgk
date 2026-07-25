@@ -83,6 +83,14 @@ export function Training() {
       api.tournaments(tournamentSearch, tournamentYear, tournamentYear ? 500 : 80),
     enabled: mode === 'tournament',
   })
+  const selectedTournament = tournaments?.items.find((t) => t.id === packId) ?? null
+  const countOptions =
+    mode === 'tournament' && selectedTournament
+      ? [
+          ...COUNTS.filter((value) => value < selectedTournament.questions_count),
+          selectedTournament.questions_count,
+        ]
+      : COUNTS
 
   const weakIds = (weak?.categories ?? [])
     .filter((c) => c.weak && c.category_id !== null)
@@ -119,6 +127,9 @@ export function Training() {
 
   const selectMode = (value: Mode, collapse = false) => {
     setMode(value)
+    if (value !== 'tournament' && !COUNTS.includes(count)) {
+      setCount(12)
+    }
     if (collapse) {
       setAdvanced(false)
       setLayer('any')
@@ -304,6 +315,9 @@ export function Training() {
               onChange={(e) => {
                 setTournamentSearch(e.target.value)
                 setPackId(null)
+                if (!COUNTS.includes(count)) {
+                  setCount(12)
+                }
                 start.reset()
               }}
               placeholder="Название турнира…"
@@ -321,6 +335,9 @@ export function Training() {
               onChange={(event) => {
                 setTournamentYear(event.target.value ? Number(event.target.value) : null)
                 setPackId(null)
+                if (!COUNTS.includes(count)) {
+                  setCount(12)
+                }
                 start.reset()
               }}
               className="h-8 rounded-md border border-border bg-paper-raised px-2 text-xs"
@@ -348,6 +365,7 @@ export function Training() {
                     type="button"
                     onClick={() => {
                       setPackId(t.id)
+                      setCount(t.questions_count)
                       start.reset()
                     }}
                     aria-pressed={packId === t.id}
@@ -417,7 +435,7 @@ export function Training() {
           Сколько вопросов
         </legend>
         <div className="flex gap-1.5">
-          {COUNTS.map((c) => (
+          {countOptions.map((c) => (
             <button
               key={c}
               type="button"
@@ -427,13 +445,15 @@ export function Training() {
               }}
               aria-pressed={count === c}
               className={cn(
-                'tabular h-8 w-14 rounded-md border text-xs transition-colors',
+                'tabular h-8 min-w-14 rounded-md border px-2 text-xs transition-colors',
                 count === c
                   ? 'border-amber bg-amber-wash/60 font-medium'
                   : 'border-border bg-paper-raised hover:border-amber-soft',
               )}
             >
-              {c}
+              {mode === 'tournament' && selectedTournament?.questions_count === c
+                ? `Все ${c}`
+                : c}
             </button>
           ))}
         </div>
@@ -488,7 +508,9 @@ export function Training() {
               ? 'Выберите турнир'
               : mode === 'weak' && weakIds.length === 0
                 ? 'Слабые темы не измерены'
-                : `${count} ${questionsWord(count)} · результаты сохранятся`}
+                : mode === 'tournament' && selectedTournament?.questions_count === count
+                  ? `Весь турнир · ${count} ${questionsWord(count)} · результаты сохранятся`
+                  : `${count} ${questionsWord(count)} · результаты сохранятся`}
         </p>
       </div>
 

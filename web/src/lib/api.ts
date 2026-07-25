@@ -376,6 +376,8 @@ export interface PlayerActivity {
   username: string
   display_name: string
   role: 'owner' | 'player'
+  telegram_id: string | null
+  vk_id: string | null
   attempts: number
   questions: number
   correct: number
@@ -522,6 +524,26 @@ export const api = {
       active: boolean
     }>('/api/admin/users', {
       method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updatePlayer: (
+    id: number,
+    body: {
+      username: string
+      display_name: string
+      password?: string | null
+      telegram_id?: string | number | null
+      vk_id?: string | number | null
+    },
+  ) =>
+    request<{
+      id: number
+      username: string
+      display_name: string
+      role: 'owner' | 'player'
+      active: boolean
+    }>(`/api/admin/users/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(body),
     }),
   similar: (id: number, top = 8) =>

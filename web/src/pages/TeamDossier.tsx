@@ -2,11 +2,19 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Target, TrendingDown, Trophy, Crosshair, Users, UserPlus } from 'lucide-react'
-import { api, type CalibrationBand } from '@/lib/api'
+import { api, type CalibrationBand, type PlayerActivity } from '@/lib/api'
 import { Page } from '@/components/AppShell'
 import { ErrorState, BlockSkeleton, loadError } from '@/components/States'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+
+const emptyAccountForm = {
+  display_name: '',
+  username: '',
+  password: '',
+  telegram_id: '',
+  vk_id: '',
+}
 
 const pct = (x: number) => `${Math.round(x * 100)}%`
 const signed = (x: number, digits = 1) => `${x >= 0 ? '+' : ''}${x.toFixed(digits)}`
@@ -201,13 +209,9 @@ export function TeamDossier() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [showCreatePlayer, setShowCreatePlayer] = useState(false)
-  const [playerForm, setPlayerForm] = useState({
-    display_name: '',
-    username: '',
-    password: '',
-    telegram_id: '',
-    vk_id: '',
-  })
+  const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null)
+  const [playerForm, setPlayerForm] = useState(emptyAccountForm)
+  const [editForm, setEditForm] = useState(emptyAccountForm)
   const { data, isPending, error, fetchStatus, refetch } = useQuery({
     queryKey: ['team-dossier'],
     queryFn: api.teamDossier,
@@ -226,19 +230,47 @@ export function TeamDossier() {
         password: playerForm.password,
         telegram_id: playerForm.telegram_id.trim() || null,
         vk_id: playerForm.vk_id.trim() || null,
-      }),
+    }),
     onSuccess: () => {
-      setPlayerForm({
-        display_name: '',
-        username: '',
-        password: '',
-        telegram_id: '',
-        vk_id: '',
-      })
+      setPlayerForm(emptyAccountForm)
       setShowCreatePlayer(false)
       queryClient.invalidateQueries({ queryKey: ['team-dossier'] })
     },
   })
+
+  const updatePlayer = useMutation({
+    mutationFn: () => {
+      if (editingPlayerId === null) {
+        throw new Error('Игрок не выбран')
+      }
+      return api.updatePlayer(editingPlayerId, {
+        display_name: editForm.display_name.trim(),
+        username: editForm.username.trim(),
+        password: editForm.password.trim() || null,
+        telegram_id: editForm.telegram_id.trim() || null,
+        vk_id: editForm.vk_id.trim() || null,
+      })
+    },
+    onSuccess: () => {
+      setEditForm(emptyAccountForm)
+      setEditingPlayerId(null)
+      queryClient.invalidateQueries({ queryKey: ['team-dossier'] })
+    },
+  })
+
+  const startEditPlayer = (player: PlayerActivity) => {
+    createPlayer.reset()
+    updatePlayer.reset()
+    setShowCreatePlayer(false)
+    setEditingPlayerId(player.id)
+    setEditForm({
+      display_name: player.display_name,
+      username: player.username,
+      password: '',
+      telegram_id: player.telegram_id ?? '',
+      vk_id: player.vk_id ?? '',
+    })
+  }
 
   const err = loadError(error, fetchStatus)
   if (err) return <Page><ErrorState error={err} onRetry={() => refetch()} /></Page>
@@ -275,6 +307,8 @@ export function TeamDossier() {
             className="ml-auto h-8 text-2xs"
             onClick={() => {
               createPlayer.reset()
+              updatePlayer.reset()
+              setEditingPlayerId(null)
               setShowCreatePlayer((shown) => !shown)
             }}
           >
@@ -401,43 +435,191 @@ export function TeamDossier() {
           </form>
         )}
         <div className="overflow-hidden rounded-lg border border-border bg-paper-raised">
-          <div className="hidden grid-cols-[minmax(140px,1fr)_100px_90px_90px_100px] gap-3 border-b border-border px-3.5 py-2 text-2xs font-medium tracking-wide text-muted-foreground uppercase sm:grid">
+          <div className="hidden grid-cols-[minmax(170px,1fr)_100px_90px_90px_100px_90px] gap-3 border-b border-border px-3.5 py-2 text-2xs font-medium tracking-wide text-muted-foreground uppercase sm:grid">
             <span>Игрок</span>
             <span className="text-right">За 7 дней</span>
             <span className="text-right">Всего</span>
             <span className="text-right">Успех</span>
             <span className="text-right">Последняя</span>
+            <span className="text-right">Аккаунт</span>
           </div>
           <ul className="divide-y divide-border">
             {(data.players ?? []).map((player) => (
               <li
                 key={player.id}
-                className="grid gap-2 px-3.5 py-3 text-xs sm:grid-cols-[minmax(140px,1fr)_100px_90px_90px_100px] sm:items-center sm:gap-3"
+                className="px-3.5 py-3 text-xs"
               >
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{player.display_name}</div>
-                  <div className="truncate text-2xs text-muted-foreground">
-                    @{player.username}{player.role === 'owner' ? ' · владелец' : ''}
+                <div className="grid gap-2 sm:grid-cols-[minmax(170px,1fr)_100px_90px_90px_100px_90px] sm:items-center sm:gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{player.display_name}</div>
+                    <div className="truncate text-2xs text-muted-foreground">
+                      @{player.username}{player.role === 'owner' ? ' · владелец' : ''}
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
+                      <span>TG: {player.telegram_id || '—'}</span>
+                      <span>VK: {player.vk_id || '—'}</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between sm:block sm:text-right">
+                    <span className="text-2xs text-muted-foreground sm:hidden">За 7 дней</span>
+                    <span className="tabular">{player.attempts_7d}</span>
+                  </div>
+                  <div className="flex justify-between sm:block sm:text-right">
+                    <span className="text-2xs text-muted-foreground sm:hidden">Вопросов</span>
+                    <span className="tabular">{player.questions}</span>
+                  </div>
+                  <div className="flex justify-between sm:block sm:text-right">
+                    <span className="text-2xs text-muted-foreground sm:hidden">Успех</span>
+                    <span className="tabular">
+                      {player.success_pct === null ? '—' : `${Math.round(player.success_pct)}%`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-2xs text-muted-foreground sm:block sm:text-right">
+                    <span className="sm:hidden">Последняя</span>
+                    <span>{relativeActivity(player.last_attempt_at)}</span>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-7 text-2xs"
+                      onClick={() => startEditPlayer(player)}
+                    >
+                      Править
+                    </Button>
                   </div>
                 </div>
-                <div className="flex justify-between sm:block sm:text-right">
-                  <span className="text-2xs text-muted-foreground sm:hidden">За 7 дней</span>
-                  <span className="tabular">{player.attempts_7d}</span>
-                </div>
-                <div className="flex justify-between sm:block sm:text-right">
-                  <span className="text-2xs text-muted-foreground sm:hidden">Вопросов</span>
-                  <span className="tabular">{player.questions}</span>
-                </div>
-                <div className="flex justify-between sm:block sm:text-right">
-                  <span className="text-2xs text-muted-foreground sm:hidden">Успех</span>
-                  <span className="tabular">
-                    {player.success_pct === null ? '—' : `${Math.round(player.success_pct)}%`}
-                  </span>
-                </div>
-                <div className="flex justify-between text-2xs text-muted-foreground sm:block sm:text-right">
-                  <span className="sm:hidden">Последняя</span>
-                  <span>{relativeActivity(player.last_attempt_at)}</span>
-                </div>
+                {editingPlayerId === player.id && (
+                  <form
+                    className="mt-3 rounded-lg border border-border bg-background/50 p-3"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      updatePlayer.mutate()
+                    }}
+                  >
+                    <div className="mb-3">
+                      <h3 className="text-xs font-semibold">
+                        Управление аккаунтом · {player.display_name}
+                      </h3>
+                      <p className="mt-0.5 text-2xs text-muted-foreground">
+                        Можно поменять логин, имя, привязки ботов и задать новый пароль.
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="space-y-1 text-2xs font-medium">
+                        <span>Имя игрока</span>
+                        <Input
+                          value={editForm.display_name}
+                          onChange={(event) =>
+                            setEditForm((form) => ({
+                              ...form,
+                              display_name: event.target.value,
+                            }))
+                          }
+                          required
+                        />
+                      </label>
+                      <label className="space-y-1 text-2xs font-medium">
+                        <span>Логин</span>
+                        <Input
+                          value={editForm.username}
+                          onChange={(event) =>
+                            setEditForm((form) => ({
+                              ...form,
+                              username: event.target.value,
+                            }))
+                          }
+                          autoCapitalize="none"
+                          required
+                        />
+                      </label>
+                      <label className="space-y-1 text-2xs font-medium">
+                        <span>
+                          Новый пароль{' '}
+                          <span className="font-normal text-muted-foreground">
+                            оставить пустым, если не менять
+                          </span>
+                        </span>
+                        <Input
+                          type="password"
+                          value={editForm.password}
+                          onChange={(event) =>
+                            setEditForm((form) => ({
+                              ...form,
+                              password: event.target.value,
+                            }))
+                          }
+                          placeholder="Не короче 10 символов"
+                          minLength={10}
+                        />
+                      </label>
+                      <label className="space-y-1 text-2xs font-medium">
+                        <span>Telegram ID или @username</span>
+                        <Input
+                          type="text"
+                          inputMode="text"
+                          autoComplete="off"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          value={editForm.telegram_id}
+                          onChange={(event) =>
+                            setEditForm((form) => ({
+                              ...form,
+                              telegram_id: event.target.value,
+                            }))
+                          }
+                          placeholder="@mtv3dd или 123456789"
+                        />
+                      </label>
+                      <label className="space-y-1 text-2xs font-medium">
+                        <span>VK ID</span>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          value={editForm.vk_id}
+                          onChange={(event) =>
+                            setEditForm((form) => ({
+                              ...form,
+                              vk_id: event.target.value,
+                            }))
+                          }
+                          placeholder="Например, 351841559"
+                        />
+                      </label>
+                    </div>
+                    {updatePlayer.error && (
+                      <p className="mt-3 text-2xs text-rose-600">
+                        {(updatePlayer.error as Error).message}
+                      </p>
+                    )}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        type="submit"
+                        className="h-8 text-2xs"
+                        disabled={updatePlayer.isPending}
+                      >
+                        {updatePlayer.isPending ? 'Сохраняем…' : 'Сохранить'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-8 text-2xs"
+                        onClick={() => {
+                          setEditingPlayerId(null)
+                          setEditForm(emptyAccountForm)
+                          updatePlayer.reset()
+                        }}
+                      >
+                        Отмена
+                      </Button>
+                    </div>
+                  </form>
+                )}
               </li>
             ))}
           </ul>

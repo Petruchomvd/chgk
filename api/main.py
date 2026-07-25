@@ -154,6 +154,14 @@ class CreatePlayerRequest(BaseModel):
     vk_id: Optional[int | str] = None
 
 
+class UpdatePlayerRequest(BaseModel):
+    username: str
+    display_name: str
+    password: Optional[str] = None
+    telegram_id: Optional[int | str] = None
+    vk_id: Optional[int | str] = None
+
+
 def _normalize_telegram_identity(value: int | str | None) -> tuple[str, str, int | None] | None:
     if value is None:
         return None
@@ -180,6 +188,40 @@ def _normalize_numeric_identity(value: int | str | None, label: str) -> str | No
     if not raw.isdigit() or int(raw) <= 0:
         raise HTTPException(400, f"{label} должен быть положительным числом")
     return raw
+
+
+def _replace_user_identities(
+    conn: sqlite3.Connection,
+    user_id: int,
+    telegram_identity: tuple[str, str, int | None] | None,
+    vk_identity: str | None,
+    now: str,
+) -> None:
+    conn.execute(
+        """
+        DELETE FROM user_identities
+        WHERE user_id = ? AND provider IN ('telegram', 'telegram_username', 'vk')
+        """,
+        (user_id,),
+    )
+    if telegram_identity is not None:
+        conn.execute(
+            """
+            INSERT INTO user_identities (
+                user_id, provider, provider_user_id, created_at
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (user_id, telegram_identity[0], telegram_identity[1], now),
+        )
+    if vk_identity is not None:
+        conn.execute(
+            """
+            INSERT INTO user_identities (
+                user_id, provider, provider_user_id, created_at
+            ) VALUES (?, 'vk', ?, ?)
+            """,
+            (user_id, vk_identity, now),
+        )
 
 
 def _user_payload(user, csrf_token: str) -> Dict[str, Any]:
@@ -288,24 +330,7 @@ def create_player(req: CreatePlayerRequest):
                     now,
                 ),
             )
-            if telegram_identity is not None:
-                conn.execute(
-                    """
-                    INSERT INTO user_identities (
-                        user_id, provider, provider_user_id, created_at
-                    ) VALUES (?, ?, ?, ?)
-                    """,
-                    (user_id, telegram_identity[0], telegram_identity[1], now),
-                )
-            if vk_identity is not None:
-                conn.execute(
-                    """
-                    INSERT INTO user_identities (
-                        user_id, provider, provider_user_id, created_at
-                    ) VALUES (?, 'vk', ?, ?)
-                    """,
-                    (user_id, vk_identity, now),
-                )
+            _replace_user_identities(conn, user_id, telegram_identity, vk_identity, now)
             conn.commit()
         except sqlite3.IntegrityError as exc:
             conn.rollback()
@@ -320,6 +345,78 @@ def create_player(req: CreatePlayerRequest):
         "username": username,
         "display_name": display_name,
         "role": "player",
+        "active": True,
+    }
+
+
+@app.put("/api/admin/users/{user_id}")
+def update_player(user_id: int, req: UpdatePlayerRequest):
+    """Обновить аккаунт игрока и привязки ботов из интерфейса владельца."""
+    require_owner()
+    try:
+        username = validate_username(req.username)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    display_name = req.display_name.strip()
+    if not display_name:
+        raise HTTPException(400, "Укажите имя игрока")
+    telegram_identity = _normalize_telegram_identity(req.telegram_id)
+    vk_identity = _normalize_numeric_identity(req.vk_id, "VK ID")
+
+    password_update: tuple[bytes, bytes] | None = None
+    if req.password is not None and req.password.strip():
+        try:
+            password_update = hash_password(req.password)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    conn = get_training_connection()
+    try:
+        row = conn.execute(
+            "SELECT id, role FROM users WHERE id = ? AND active = 1",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, "Аккаунт не найден")
+
+        now = datetime.now().isoformat(timespec="seconds")
+        try:
+            if password_update is None:
+                conn.execute(
+                    """
+                    UPDATE users
+                    SET username = ?, display_name = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (username, display_name, now, user_id),
+                )
+            else:
+                digest, salt = password_update
+                conn.execute(
+                    """
+                    UPDATE users
+                    SET username = ?, display_name = ?,
+                        password_hash = ?, password_salt = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (username, display_name, digest, salt, now, user_id),
+                )
+            _replace_user_identities(conn, user_id, telegram_identity, vk_identity, now)
+            conn.commit()
+        except sqlite3.IntegrityError as exc:
+            conn.rollback()
+            raise HTTPException(
+                409, "Такой логин, Telegram или VK ID уже используется"
+            ) from exc
+    finally:
+        conn.close()
+
+    return {
+        "id": user_id,
+        "username": username,
+        "display_name": display_name,
+        "role": row["role"],
         "active": True,
     }
 
@@ -631,6 +728,27 @@ def _player_activity() -> list[dict[str, Any]]:
     """Короткая сводка активности аккаунтов для владельца команды."""
     conn = get_training_connection()
     try:
+        identities = defaultdict(dict)
+        for identity in conn.execute(
+            """
+            SELECT user_id, provider, provider_user_id
+            FROM user_identities
+            WHERE provider IN ('telegram', 'telegram_username', 'vk')
+            """
+        ).fetchall():
+            if identity["provider"] == "telegram_username":
+                identities[identity["user_id"]]["telegram_id"] = (
+                    f"@{identity['provider_user_id']}"
+                )
+            elif identity["provider"] == "telegram":
+                identities[identity["user_id"]]["telegram_id"] = identity[
+                    "provider_user_id"
+                ]
+            elif identity["provider"] == "vk":
+                identities[identity["user_id"]]["vk_id"] = identity[
+                    "provider_user_id"
+                ]
+
         rows = conn.execute(
             """
             SELECT
@@ -659,6 +777,8 @@ def _player_activity() -> list[dict[str, Any]]:
         return [
             {
                 **dict(row),
+                "telegram_id": identities[row["id"]].get("telegram_id"),
+                "vk_id": identities[row["id"]].get("vk_id"),
                 "success_pct": (
                     round(100 * row["correct"] / row["attempts"], 1)
                     if row["attempts"]

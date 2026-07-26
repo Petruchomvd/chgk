@@ -79,6 +79,143 @@ function TopicRows({
   )
 }
 
+function formatShortDay(day: string) {
+  const [, month, date] = day.split('-')
+  return `${date}.${month}`
+}
+
+function buildProgressTimeline(activity: OverviewData['activity']) {
+  const byDay = new Map(activity.map((item) => [item.day, item]))
+  const days: OverviewData['activity'] = []
+  const today = new Date()
+  for (let offset = 29; offset >= 0; offset -= 1) {
+    const d = new Date(today)
+    d.setDate(today.getDate() - offset)
+    const key = d.toISOString().slice(0, 10)
+    days.push(byDay.get(key) ?? { day: key, total: 0, knew: 0 })
+  }
+  return days
+}
+
+function ProgressHistory({ activity }: { activity: OverviewData['activity'] }) {
+  const days = buildProgressTimeline(activity)
+  const activeDays = days.filter((day) => day.total > 0)
+  const maxTotal = Math.max(...days.map((day) => day.total), 1)
+  const lastActive = activeDays.slice(-7)
+  const previousActive = activeDays.slice(-14, -7)
+  const sum = (items: typeof activeDays, key: 'total' | 'knew') =>
+    items.reduce((acc, item) => acc + item[key], 0)
+  const success = (items: typeof activeDays) => {
+    const total = sum(items, 'total')
+    return total ? Math.round((100 * sum(items, 'knew')) / total) : null
+  }
+  const recentSuccess = success(lastActive)
+  const previousSuccess = success(previousActive)
+  const trend =
+    recentSuccess == null || previousSuccess == null
+      ? null
+      : recentSuccess - previousSuccess
+  const totalQuestions = sum(activeDays, 'total')
+  const totalCorrect = sum(activeDays, 'knew')
+  const bestDay = activeDays.reduce<(typeof activeDays)[number] | null>(
+    (best, day) =>
+      !best || day.total > best.total || (day.total === best.total && day.knew > best.knew)
+        ? day
+        : best,
+    null,
+  )
+
+  if (activeDays.length === 0) {
+    return <Empty title="Пока нет активности" />
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-paper-raised">
+      <div className="grid gap-4 border-b border-border px-4 py-3.5 sm:grid-cols-[1fr_auto]">
+        <div>
+          <p className="text-sm font-medium">История прогресса</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Столбики — сколько вопросов было в день, цвет — насколько удачно.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-4 text-right">
+          <Stat
+            value={`${Math.round((100 * totalCorrect) / Math.max(totalQuestions, 1))}%`}
+            label="за 30 дней"
+          />
+          <Stat
+            value={trend == null ? '—' : `${trend > 0 ? '+' : ''}${trend} п.п.`}
+            label="тренд"
+          />
+          <Stat value={num(totalQuestions)} label="вопросов" />
+        </div>
+      </div>
+
+      <div className="px-4 py-4">
+        <div className="flex h-32 items-end gap-1.5 border-b border-border/70 pb-2">
+          {days.map((day, index) => {
+            const pct = day.total ? Math.round((100 * day.knew) / day.total) : null
+            const height = day.total ? Math.max(10, (day.total / maxTotal) * 100) : 4
+            const tone =
+              pct == null
+                ? 'bg-paper-sunk'
+                : pct >= 55
+                  ? 'bg-knew'
+                  : pct >= 30
+                    ? 'bg-amber'
+                    : 'bg-missed'
+            return (
+              <div
+                key={day.day}
+                className="group relative flex min-w-1 flex-1 items-end"
+                title={
+                  day.total
+                    ? `${formatShortDay(day.day)}: ${day.knew}/${day.total} (${pct}%)`
+                    : `${formatShortDay(day.day)}: не тренировались`
+                }
+              >
+                <span
+                  className={cn(
+                    'block w-full rounded-t-sm opacity-80 transition-all group-hover:opacity-100',
+                    tone,
+                  )}
+                  style={{ height: `${height}%` }}
+                />
+                {(index === 0 || index === days.length - 1 || index === 14) && (
+                  <span className="absolute top-full left-1/2 mt-1 -translate-x-1/2 text-[10px] whitespace-nowrap text-muted-foreground">
+                    {formatShortDay(day.day)}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="mt-6 grid gap-3 text-xs text-muted-foreground sm:grid-cols-3">
+          <p>
+            Последние активные дни:{' '}
+            <span className="font-medium text-foreground">
+              {recentSuccess == null ? 'пока мало данных' : `${recentSuccess}%`}
+            </span>
+          </p>
+          <p>
+            До этого:{' '}
+            <span className="font-medium text-foreground">
+              {previousSuccess == null ? 'нет базы сравнения' : `${previousSuccess}%`}
+            </span>
+          </p>
+          <p>
+            Самый плотный день:{' '}
+            <span className="font-medium text-foreground">
+              {bestDay ? `${formatShortDay(bestDay.day)} · ${bestDay.total}` : '—'}
+            </span>
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 type OverviewData = Awaited<ReturnType<typeof api.overview>>
 
 export function Overview() {
@@ -273,28 +410,8 @@ export function Overview() {
 
       {/* ─── Активность ───────────────────────────────────────── */}
       {!untouched && (
-        <Section title="Активность за 30 дней">
-          {activity.length === 0 ? (
-            <Empty title="Пока нет активности" />
-          ) : (
-            <div className="flex h-24 items-end gap-1 rounded-lg border border-border bg-paper-raised px-3 py-2">
-              {activity.map((day) => {
-                const max = Math.max(...activity.map((item) => item.total), 1)
-                return (
-                  <div
-                    key={day.day}
-                    className="group relative flex min-w-1 flex-1 items-end"
-                    title={`${day.day}: ${day.total} вопросов`}
-                  >
-                    <span
-                      className="block w-full rounded-t-sm bg-amber/70 transition-colors group-hover:bg-amber"
-                      style={{ height: `${Math.max(6, (day.total / max) * 100)}%` }}
-                    />
-                  </div>
-                )
-              })}
-            </div>
-          )}
+        <Section title="Активность и динамика">
+          <ProgressHistory activity={activity} />
         </Section>
       )}
 

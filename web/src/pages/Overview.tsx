@@ -124,6 +124,25 @@ function ProgressHistory({ activity }: { activity: OverviewData['activity'] }) {
         : best,
     null,
   )
+  const chartWidth = 720
+  const chartHeight = 180
+  const chartPadding = { top: 16, right: 18, bottom: 30, left: 24 }
+  const innerWidth = chartWidth - chartPadding.left - chartPadding.right
+  const innerHeight = chartHeight - chartPadding.top - chartPadding.bottom
+  const slot = innerWidth / days.length
+  const barWidth = Math.max(8, slot * 0.58)
+  const points = days
+    .map((day, index) => {
+      if (!day.total) return null
+      const pct = (100 * day.knew) / day.total
+      const x = chartPadding.left + slot * index + slot / 2
+      const y = chartPadding.top + innerHeight - (pct / 100) * innerHeight
+      return { x, y, pct, day }
+    })
+    .filter((point): point is NonNullable<typeof point> => point !== null)
+  const linePath = points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
+    .join(' ')
 
   if (activeDays.length === 0) {
     return <Empty title="Пока нет активности" />
@@ -152,43 +171,115 @@ function ProgressHistory({ activity }: { activity: OverviewData['activity'] }) {
       </div>
 
       <div className="px-4 py-4">
-        <div className="flex h-32 items-end gap-1.5 border-b border-border/70 pb-2">
-          {days.map((day, index) => {
-            const pct = day.total ? Math.round((100 * day.knew) / day.total) : null
-            const height = day.total ? Math.max(10, (day.total / maxTotal) * 100) : 4
-            const tone =
-              pct == null
-                ? 'bg-paper-sunk'
-                : pct >= 55
-                  ? 'bg-knew'
-                  : pct >= 30
-                    ? 'bg-amber'
-                    : 'bg-missed'
-            return (
-              <div
-                key={day.day}
-                className="group relative flex min-w-1 flex-1 items-end"
-                title={
-                  day.total
-                    ? `${formatShortDay(day.day)}: ${day.knew}/${day.total} (${pct}%)`
-                    : `${formatShortDay(day.day)}: не тренировались`
-                }
-              >
-                <span
-                  className={cn(
-                    'block w-full rounded-t-sm opacity-80 transition-all group-hover:opacity-100',
-                    tone,
+        <div className="overflow-hidden rounded-md border border-border/70 bg-paper">
+          <svg
+            viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+            role="img"
+            aria-label="График активности и процента правильных ответов за 30 дней"
+            className="block h-[220px] w-full sm:h-[260px]"
+            preserveAspectRatio="none"
+          >
+            <line
+              x1={chartPadding.left}
+              y1={chartPadding.top + innerHeight}
+              x2={chartWidth - chartPadding.right}
+              y2={chartPadding.top + innerHeight}
+              className="stroke-border"
+              strokeWidth="1"
+            />
+            {[25, 50, 75].map((mark) => {
+              const y = chartPadding.top + innerHeight - (mark / 100) * innerHeight
+              return (
+                <g key={mark}>
+                  <line
+                    x1={chartPadding.left}
+                    y1={y}
+                    x2={chartWidth - chartPadding.right}
+                    y2={y}
+                    className="stroke-border/60"
+                    strokeDasharray="4 6"
+                    strokeWidth="1"
+                  />
+                  <text
+                    x={chartPadding.left - 6}
+                    y={y + 4}
+                    textAnchor="end"
+                    className="fill-muted-foreground text-[10px]"
+                  >
+                    {mark}%
+                  </text>
+                </g>
+              )
+            })}
+
+            {days.map((day, index) => {
+              const pct = day.total ? Math.round((100 * day.knew) / day.total) : null
+              const barHeight = day.total ? Math.max(7, (day.total / maxTotal) * innerHeight) : 2
+              const x = chartPadding.left + slot * index + (slot - barWidth) / 2
+              const y = chartPadding.top + innerHeight - barHeight
+              const fill =
+                pct == null
+                  ? 'fill-paper-sunk'
+                  : pct >= 55
+                    ? 'fill-knew'
+                    : pct >= 30
+                      ? 'fill-amber'
+                      : 'fill-missed'
+              return (
+                <g key={day.day}>
+                  <rect
+                    x={x}
+                    y={y}
+                    width={barWidth}
+                    height={barHeight}
+                    rx="3"
+                    className={cn(fill, 'opacity-75')}
+                  >
+                    <title>
+                      {day.total
+                        ? `${formatShortDay(day.day)}: ${day.knew}/${day.total} (${pct}%)`
+                        : `${formatShortDay(day.day)}: не тренировались`}
+                    </title>
+                  </rect>
+                  {(index === 0 || index === days.length - 1 || index === 14) && (
+                    <text
+                      x={chartPadding.left + slot * index + slot / 2}
+                      y={chartHeight - 10}
+                      textAnchor="middle"
+                      className="fill-muted-foreground text-[10px]"
+                    >
+                      {formatShortDay(day.day)}
+                    </text>
                   )}
-                  style={{ height: `${height}%` }}
-                />
-                {(index === 0 || index === days.length - 1 || index === 14) && (
-                  <span className="absolute top-full left-1/2 mt-1 -translate-x-1/2 text-[10px] whitespace-nowrap text-muted-foreground">
-                    {formatShortDay(day.day)}
-                  </span>
-                )}
-              </div>
-            )
-          })}
+                </g>
+              )
+            })}
+
+            {linePath && (
+              <path
+                d={linePath}
+                fill="none"
+                className="stroke-foreground"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+            {points.map((point) => (
+              <circle
+                key={`${point.day.day}-${point.x}`}
+                cx={point.x}
+                cy={point.y}
+                r="4"
+                className="fill-paper stroke-foreground"
+                strokeWidth="2"
+              >
+                <title>
+                  {formatShortDay(point.day.day)}: {Math.round(point.pct)}% правильных
+                </title>
+              </circle>
+            ))}
+          </svg>
         </div>
 
         <div className="mt-6 grid gap-3 text-xs text-muted-foreground sm:grid-cols-3">
